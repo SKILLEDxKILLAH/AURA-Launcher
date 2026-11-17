@@ -1,0 +1,188 @@
+package com.aura.launcher.ui
+
+import android.Manifest
+import android.app.role.RoleManager
+import android.content.Intent
+import android.provider.Settings
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.aura.launcher.ActivityBridge
+import com.aura.launcher.data.AuraPrefs
+import com.aura.launcher.data.GeminiEngine
+import com.aura.launcher.ui.theme.Aura
+
+@Composable
+fun SettingsScreen(prefs: AuraPrefs, requestPermissions: (List<String>) -> Unit, onClose: () -> Unit) {
+    val context = LocalContext.current
+    Column(
+        Modifier.fillMaxSize().background(Color(0xF71D1B19)).systemBarsPadding()
+            .verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 12.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            AuraGlyph(Glyph.Sparkle, size = 30.dp)
+            Spacer(Modifier.width(12.dp))
+            Text("AURA", color = Aura.Ink, fontSize = 30.sp, fontFamily = Aura.Sans, modifier = Modifier.weight(1f))
+            Text("Done", color = Aura.GeminiViolet, fontSize = 16.sp, modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onClose).padding(10.dp))
+        }
+
+        Group("Home") {
+            ActionRow("Set AURA as your home app", "Required for the home button to open AURA") {
+                val rm = context.getSystemService(RoleManager::class.java)
+                val intent = if (rm.isRoleAvailable(RoleManager.ROLE_HOME) && !rm.isRoleHeld(RoleManager.ROLE_HOME)) {
+                    rm.createRequestRoleIntent(RoleManager.ROLE_HOME)
+                } else Intent(Settings.ACTION_HOME_SETTINGS)
+                ActivityBridge.activity?.startActivity(intent)
+            }
+            ToggleRow("AURA backdrop", "Off uses your system wallpaper", prefs.useAuraBackdrop, prefs::updateUseAuraBackdrop)
+            ToggleRow("Weather on home", "Local conditions via Open‑Meteo", prefs.showWeather, prefs::updateShowWeather)
+            ToggleRow("Fahrenheit", null, prefs.fahrenheit, prefs::updateFahrenheit)
+        }
+
+        Group("Gemini") {
+            RadioRow(
+                "Google Gemini app",
+                "Prompts and voice go straight to Gemini. Make it your default assistant so it can act on your phone.",
+                prefs.engine == GeminiEngine.GEMINI_APP,
+            ) { prefs.updateEngine(GeminiEngine.GEMINI_APP) }
+            RadioRow(
+                "AURA agent (Gemini API)",
+                "Gemini runs inside AURA and operates the phone with tools: apps, settings, calls, messages, alarms, timers, flashlight, navigation, media, calendar.",
+                prefs.engine == GeminiEngine.AURA_AGENT,
+            ) { prefs.updateEngine(GeminiEngine.AURA_AGENT) }
+
+            if (prefs.engine == GeminiEngine.AURA_AGENT) {
+                var key by remember { mutableStateOf(prefs.apiKey) }
+                var reveal by remember { mutableStateOf(false) }
+                Field(
+                    label = "Gemini API key",
+                    value = key,
+                    onChange = { key = it; prefs.updateApiKey(it) },
+                    transformation = if (reveal) VisualTransformation.None else PasswordVisualTransformation(),
+                )
+                Text(
+                    if (reveal) "Hide key" else "Show key", color = Aura.GeminiViolet, fontSize = 13.sp,
+                    modifier = Modifier.padding(start = 6.dp, bottom = 6.dp).clickable { reveal = !reveal },
+                )
+                var model by remember { mutableStateOf(prefs.model) }
+                Field("Model", model, { model = it; prefs.updateModel(it) })
+                Text(
+                    "Get a key at aistudio.google.com. It stays on this device and is sent only to Google's Gemini API.",
+                    color = Aura.InkFaint, fontSize = 12.sp, modifier = Modifier.padding(6.dp),
+                )
+            }
+
+            ActionRow("Make Gemini your default assistant", "Lets Gemini read the screen and control apps system‑wide") {
+                ActivityBridge.start(context, Intent(Settings.ACTION_VOICE_INPUT_SETTINGS))
+            }
+            ActionRow("Grant phone permissions", "Contacts, calling and location for Gemini actions and weather") {
+                requestPermissions(
+                    listOf(Manifest.permission.READ_CONTACTS, Manifest.permission.CALL_PHONE, Manifest.permission.ACCESS_COARSE_LOCATION)
+                )
+            }
+        }
+
+        Group("About") {
+            Text("AURA Launcher 1.0 · Built for Android 17", color = Aura.InkDim, fontSize = 14.sp, modifier = Modifier.padding(6.dp))
+            Text("Tips: swipe up for apps · drag the letters on the right · long-press the Gemini card for the full Gemini app · long-press “Android 17” for these settings.",
+                color = Aura.InkFaint, fontSize = 13.sp, modifier = Modifier.padding(6.dp))
+        }
+        Spacer(Modifier.height(40.dp))
+    }
+}
+
+@Composable
+private fun Group(title: String, content: @Composable () -> Unit) {
+    Spacer(Modifier.height(22.dp))
+    SectionLabel(title, Modifier.padding(start = 6.dp, bottom = 8.dp))
+    Column(Modifier.fillMaxWidth().glass(RoundedCornerShape(24.dp)).padding(10.dp)) { content() }
+}
+
+@Composable
+private fun ToggleRow(title: String, subtitle: String?, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { onChange(!checked) }.padding(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, color = Aura.Ink, fontSize = 16.sp, fontFamily = Aura.Sans)
+            subtitle?.let { Text(it, color = Aura.InkDim, fontSize = 13.sp) }
+        }
+        Switch(
+            checked = checked, onCheckedChange = onChange,
+            colors = SwitchDefaults.colors(checkedTrackColor = Aura.GeminiViolet, checkedThumbColor = Color.White),
+        )
+    }
+}
+
+@Composable
+private fun RadioRow(title: String, subtitle: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick).padding(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(selected = selected, onClick = onClick)
+        Spacer(Modifier.width(6.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, color = Aura.Ink, fontSize = 16.sp, fontFamily = Aura.Sans)
+            Text(subtitle, color = Aura.InkDim, fontSize = 13.sp)
+        }
+    }
+}
+
+@Composable
+private fun ActionRow(title: String, subtitle: String, onClick: () -> Unit) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick).padding(10.dp)) {
+        Text(title, color = Aura.Ink, fontSize = 16.sp, fontFamily = Aura.Sans)
+        Text(subtitle, color = Aura.InkDim, fontSize = 13.sp)
+    }
+}
+
+@Composable
+private fun Field(label: String, value: String, onChange: (String) -> Unit, transformation: VisualTransformation = VisualTransformation.None) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onChange,
+        label = { Text(label) },
+        singleLine = true,
+        visualTransformation = transformation,
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = Aura.GeminiViolet,
+            unfocusedBorderColor = Aura.Stroke,
+            focusedTextColor = Aura.Ink,
+            unfocusedTextColor = Aura.Ink,
+        ),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp),
+    )
+}
