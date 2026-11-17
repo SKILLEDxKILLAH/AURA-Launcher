@@ -101,11 +101,12 @@ fun ModelPanel(
     onRetry: () -> Unit,
     onRunCheck: () -> Unit,
     onDone: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val picks = remember(state.models) { recommended(state.models) }
     var showAll by remember { mutableStateOf(state.models.isNotEmpty() && picks.none { it.model.id == state.model }) }
 
-    Column(Modifier.fillMaxWidth().heightIn(max = 540.dp).verticalScroll(rememberScrollState()).animateContentSize()) {
+    Column(modifier.fillMaxWidth().heightIn(max = 540.dp).verticalScroll(rememberScrollState()).animateContentSize()) {
         PanelTitle("Model")
         when {
             state.modelsLoading && state.models.isEmpty() -> Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {

@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -51,6 +53,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -174,6 +177,8 @@ fun GeminiSheet(
                     onRetry = onLoadModels,
                     onRunCheck = { panelOpen = false; onRunCheck() },
                     onDone = { panelOpen = false },
+                    // Shrinks to fit when the keyboard or a small screen leaves less room.
+                    modifier = Modifier.weight(1f, fill = false),
                 )
                 return@Column
             }
@@ -190,10 +195,18 @@ fun GeminiSheet(
                 }
             } else {
                 val listState = rememberLazyListState()
-                LaunchedEffect(state.chat.size, state.busy) { listState.animateScrollToItem(listState.layoutInfo.totalItemsCount.coerceAtLeast(1) - 1) }
+                // Keep the newest message in view, including when the keyboard opens and the list shrinks.
+                val imeBottom = WindowInsets.ime.getBottom(LocalDensity.current)
+                LaunchedEffect(state.chat.size, state.busy, imeBottom) {
+                    // Index from the data, not layoutInfo (which is empty before the first layout).
+                    val last = state.chat.lastIndex + if (state.busy) 1 else 0
+                    if (last >= 0) listState.animateScrollToItem(last)
+                }
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.heightIn(max = 380.dp),
+                    // weight(fill = false): up to 380dp tall, but gives up space first so the
+                    // typing field below always stays above the keyboard.
+                    modifier = Modifier.weight(1f, fill = false).heightIn(max = 380.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(state.chat) { ChatBubble(it) }

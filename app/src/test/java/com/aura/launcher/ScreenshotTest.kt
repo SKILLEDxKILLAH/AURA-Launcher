@@ -5,6 +5,9 @@ import android.graphics.Bitmap
 import android.os.Process
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -353,6 +356,46 @@ class ScreenshotTest {
             }
         }
         save("news_feed")
+    }
+
+    /** Regression: with the keyboard up (less height), the typing field must stay fully visible. */
+    @Test
+    fun typingFieldStaysAboveKeyboard() {
+        val visibleHeight = 560.dp // ~915dp screen minus a ~355dp keyboard
+        val chat = buildList {
+            repeat(6) {
+                add(ChatItem(ChatRole.USER, "Turn on the flashlight"))
+                add(ChatItem(ChatRole.ACTION, "Flashlight on"))
+                add(ChatItem(ChatRole.GEMINI, "I've turned on your flashlight."))
+            }
+            add(ChatItem(ChatRole.GEMINI, "Newest reply"))
+        }
+        compose.setContent {
+            AuraTheme {
+                Box(Modifier.fillMaxSize()) {
+                    AuraBackdrop()
+                    Box(Modifier.fillMaxWidth().height(visibleHeight)) {
+                        com.aura.launcher.ui.GeminiSheet(
+                            state = com.aura.launcher.ui.GeminiSheetState(
+                                chat = chat, busy = false, needsSignIn = false, signingIn = false, signInError = null,
+                                accountLabel = "you@gmail.com", model = "gemini-flash-lite-latest", listenRequest = 0,
+                                thinking = com.aura.launcher.data.ThinkingLevel.MINIMAL,
+                            ),
+                            onSend = {}, onSignIn = {}, onClear = {}, onOpenSettings = {}, onDismiss = {},
+                        )
+                    }
+                }
+            }
+        }
+        compose.mainClock.advanceTimeBy(800)
+        val field = compose.onNodeWithText("What can I do for you?").fetchSemanticsNode().boundsInRoot
+        val limit = with(compose.density) { visibleHeight.toPx() }
+        org.junit.Assert.assertTrue("typing field bottom ${field.bottom} must be above keyboard at $limit", field.bottom <= limit + 0.5f)
+        org.junit.Assert.assertTrue("typing field must have real height", field.height > 20f)
+        // The newest message is scrolled into view, just above the typing field.
+        val newest = compose.onNodeWithText("Newest reply").fetchSemanticsNode().boundsInRoot
+        org.junit.Assert.assertTrue("newest message must be visible", newest.bottom <= field.top && newest.top >= 0f)
+        save("keyboard_layout")
     }
 
     private fun renderDrawer() {
