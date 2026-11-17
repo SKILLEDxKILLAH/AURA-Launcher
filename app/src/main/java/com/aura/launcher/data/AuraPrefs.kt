@@ -7,6 +7,9 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.edit
 import java.util.Locale
 
+/** What sits at the top-left of the home screen. */
+enum class TopLineMode { LABEL, WEATHER }
+
 /** How AURA authenticates to Gemini. Both run Gemini inside the launcher. */
 enum class GeminiAuthMode { GOOGLE_ACCOUNT, API_KEY }
 
@@ -34,6 +37,13 @@ class AuraPrefs(context: Context) {
         private set
     var model by mutableStateOf(sp.getString(K_MODEL, DEFAULT_MODEL) ?: DEFAULT_MODEL)
         private set
+    var topLineMode by mutableStateOf(
+        runCatching { TopLineMode.valueOf(sp.getString(K_TOP_MODE, null) ?: "") }.getOrDefault(TopLineMode.LABEL)
+    )
+        private set
+    /** Custom top label; null means the default "Android <version>". */
+    var topLabel by mutableStateOf(sp.getString(K_TOP_LABEL, null))
+        private set
     var favorites by mutableStateOf(sp.getStringSet(K_FAVORITES, emptySet())?.toSet() ?: emptySet())
         private set
 
@@ -51,6 +61,14 @@ class AuraPrefs(context: Context) {
         accountEmail = email
         accountName = name
         sp.edit { putString(K_ACCOUNT_EMAIL, email); putString(K_ACCOUNT_NAME, name) }
+    }
+
+    fun updateTopLineMode(v: TopLineMode) { topLineMode = v; sp.edit { putString(K_TOP_MODE, v.name) } }
+
+    /** Blank resets to the default label. */
+    fun updateTopLabel(v: String) {
+        topLabel = v.trim().take(MAX_LABEL).ifEmpty { null }
+        sp.edit { putString(K_TOP_LABEL, topLabel) }
     }
 
     fun toggleFavorite(key: String) {
@@ -76,5 +94,8 @@ class AuraPrefs(context: Context) {
         private const val K_API_KEY = "gemini_api_key"
         private const val K_MODEL = "gemini_model"
         private const val K_FAVORITES = "favorites"
+        private const val K_TOP_MODE = "top_line_mode"
+        private const val K_TOP_LABEL = "top_label"
+        const val MAX_LABEL = 40
     }
 }

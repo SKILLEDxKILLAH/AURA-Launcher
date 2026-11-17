@@ -12,6 +12,10 @@ import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTouchInput
 import androidx.test.core.app.ApplicationProvider
 import com.aura.launcher.data.AppEntry
@@ -189,6 +193,52 @@ class ScreenshotTest {
             }
         }
         save("diagnostics")
+    }
+
+    @Test
+    fun editTopLabel() {
+        val vm = MainViewModel(context)
+        vm.prefs.updateTopLabel("")
+        vm.prefs.updateTopLineMode(com.aura.launcher.data.TopLineMode.LABEL)
+        compose.setContent { AuraTheme { com.aura.launcher.ui.AuraRoot(vm) {} } }
+        val label = com.aura.launcher.ui.defaultTopLabel()
+        compose.onNodeWithText(label).performClick()
+        compose.onNode(androidx.compose.ui.test.hasSetTextAction()).performTextReplacement("Hello, world")
+        compose.mainClock.advanceTimeBy(300)
+        save("top_label_editing")
+        compose.onNode(androidx.compose.ui.test.hasSetTextAction()).performImeAction()
+        compose.mainClock.advanceTimeBy(300)
+        org.junit.Assert.assertEquals("Hello, world", vm.prefs.topLabel)
+        compose.onNodeWithText("Hello, world").assertExists()
+        // Clearing it brings back the default.
+        compose.onNodeWithText("Hello, world").performClick()
+        compose.onNode(androidx.compose.ui.test.hasSetTextAction()).performTextReplacement("")
+        compose.onNode(androidx.compose.ui.test.hasSetTextAction()).performImeAction()
+        org.junit.Assert.assertNull(vm.prefs.topLabel)
+        compose.onNodeWithText(label).assertExists()
+    }
+
+    @Test
+    fun weatherAtTop() {
+        val repo = AppRepository(context)
+        val weather = WeatherNow(72, "°F", "Partly cloudy", Sky.PARTLY, true)
+        compose.setContent {
+            AuraTheme {
+                Box(Modifier.fillMaxSize()) {
+                    AuraBackdrop()
+                    HomeScreen(
+                        repo = repo, dock = emptyList(), weather = weather,
+                        showWeather = false, weatherNeedsPermission = false,
+                        actions = HomeActions({}, {}, {}, {}, {}, {}, {}, {}, {}),
+                        topLine = com.aura.launcher.ui.TopLineState(
+                            com.aura.launcher.data.TopLineMode.WEATHER, null, weather, false, {}, {}, {},
+                        ),
+                    )
+                }
+            }
+        }
+        compose.onNodeWithText("72°F").assertExists()
+        save("weather_top")
     }
 
     private fun renderDrawer() {

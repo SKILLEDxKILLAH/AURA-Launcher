@@ -17,6 +17,7 @@ import com.aura.launcher.data.AuraPrefs
 import com.aura.launcher.data.DockItem
 import com.aura.launcher.data.DockResolver
 import com.aura.launcher.data.GeminiAuthMode
+import com.aura.launcher.data.TopLineMode
 import com.aura.launcher.data.WeatherNow
 import com.aura.launcher.data.WeatherService
 import com.aura.launcher.gemini.AuraAgent
@@ -111,7 +112,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         dock = DockResolver.resolve(context)
         weatherNeedsPermission = !WeatherService.hasPermission(context)
         val now = System.currentTimeMillis()
-        if (prefs.showWeather && now - lastWeatherAt > 20 * 60_000) refreshWeather()
+        if ((prefs.showWeather || prefs.topLineMode == TopLineMode.WEATHER) && now - lastWeatherAt > 20 * 60_000) refreshWeather()
     }
 
     // ---- Home gestures -------------------------------------------------------------------------
@@ -141,6 +142,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun dismissGestureHint() {
         gestureSetupNeeded = false
         gestureHintDismissed = true
+    }
+
+    /** Opens weather the way the Pixel launcher does: Pixel Weather, then Google's weather, then search. */
+    fun openWeatherApp() {
+        val pm = context.packageManager
+        pm.getLaunchIntentForPackage("com.google.android.apps.weather")?.let { if (ActivityBridge.start(context, it)) return }
+        val googleWeather = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("dynact://velour/weather/ProxyActivity"))
+            .setComponent(android.content.ComponentName(DockResolver.GOOGLE_PACKAGE, "com.google.android.apps.gsa.velour.DynamicActivityTrampoline"))
+        if (ActivityBridge.start(context, googleWeather)) return
+        ActivityBridge.start(context, Intent(Intent.ACTION_WEB_SEARCH).putExtra(android.app.SearchManager.QUERY, "weather"))
     }
 
     // ---- Wallpaper ------------------------------------------------------------------------------

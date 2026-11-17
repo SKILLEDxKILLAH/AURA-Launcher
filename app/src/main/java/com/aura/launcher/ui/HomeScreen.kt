@@ -56,9 +56,10 @@ fun HomeScreen(
     weatherNeedsPermission: Boolean,
     actions: HomeActions,
     modifier: Modifier = Modifier,
+    topLine: TopLineState = TopLineState.Default,
 ) {
     Column(modifier.fillMaxSize().systemBarsPadding()) {
-        AuraTopBar(repo, onGoogle = actions.openGoogle, onLongPressLabel = actions.openSettings)
+        AuraTopBar(repo, onGoogle = actions.openGoogle, topLine = topLine, editable = true)
 
         Spacer(Modifier.weight(0.75f))
         ClockBlock(

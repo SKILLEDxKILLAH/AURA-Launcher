@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import com.aura.launcher.ActivityBridge
 import com.aura.launcher.data.AuraPrefs
 import com.aura.launcher.data.GeminiAuthMode
+import com.aura.launcher.data.TopLineMode
 import com.aura.launcher.gemini.GoogleAccountAuth
 import com.aura.launcher.ui.theme.Aura
 
@@ -74,8 +75,19 @@ fun SettingsScreen(
                 } else Intent(Settings.ACTION_HOME_SETTINGS)
                 ActivityBridge.activity?.startActivity(intent)
             }
+            Text("Top of the home screen", color = Aura.InkDim, fontSize = 13.sp, modifier = Modifier.padding(start = 10.dp, top = 6.dp))
+            ChoiceRow(
+                "Your text",
+                "“${prefs.topLabel ?: defaultTopLabel()}” — tap it on the home screen to change it",
+                prefs.topLineMode == TopLineMode.LABEL,
+            ) { prefs.updateTopLineMode(TopLineMode.LABEL) }
+            ChoiceRow(
+                "Weather (At a Glance)",
+                "Current conditions like the Pixel launcher; tap to open your weather app",
+                prefs.topLineMode == TopLineMode.WEATHER,
+            ) { prefs.updateTopLineMode(TopLineMode.WEATHER) }
             ToggleRow("AURA backdrop", "Off uses your system wallpaper", prefs.useAuraBackdrop, prefs::updateUseAuraBackdrop)
-            ToggleRow("Weather on home", "Local conditions via Open‑Meteo", prefs.showWeather, prefs::updateShowWeather)
+            ToggleRow("Weather under the clock", "Local conditions via Open‑Meteo", prefs.showWeather, prefs::updateShowWeather)
             ToggleRow("Fahrenheit", null, prefs.fahrenheit, prefs::updateFahrenheit)
         }
 
@@ -165,8 +177,8 @@ fun SettingsScreen(
         }
 
         Group("About") {
-            Text("AURA Launcher 1.5 · Built for Android 17", color = Aura.InkDim, fontSize = 14.sp, modifier = Modifier.padding(6.dp))
-            Text("Tips: swipe left from the right edge for apps · swipe down for notifications (two fingers: Quick Settings) · press and hold for wallpaper & settings · drag the letters on the right · tap the mic to talk to Gemini · long-press “Android 17” for these settings.",
+            Text("AURA Launcher 1.6 · Built for Android 17", color = Aura.InkDim, fontSize = 14.sp, modifier = Modifier.padding(6.dp))
+            Text("Tips: swipe left from the right edge for apps · swipe down for notifications (two fingers: Quick Settings) · press and hold for wallpaper & settings · drag the letters on the right · tap the mic to talk to Gemini · tap the top-left text to edit it, long-press it for these settings.",
                 color = Aura.InkFaint, fontSize = 13.sp, modifier = Modifier.padding(6.dp))
         }
         Spacer(Modifier.height(40.dp))
@@ -248,5 +260,23 @@ private fun CopyRow(label: String, value: String) {
         Text(label, color = Aura.InkDim, fontSize = 12.sp)
         Text(value, color = Aura.Ink, fontSize = 14.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
         Text("Tap to copy", color = Aura.InkFaint, fontSize = 11.sp)
+    }
+}
+
+@Composable
+private fun ChoiceRow(title: String, subtitle: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick).padding(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        androidx.compose.material3.RadioButton(
+            selected = selected, onClick = onClick,
+            colors = androidx.compose.material3.RadioButtonDefaults.colors(selectedColor = Aura.GeminiViolet),
+        )
+        Spacer(Modifier.width(6.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, color = Aura.Ink, fontSize = 16.sp, fontFamily = Aura.Sans)
+            Text(subtitle, color = Aura.InkDim, fontSize = 13.sp)
+        }
     }
 }

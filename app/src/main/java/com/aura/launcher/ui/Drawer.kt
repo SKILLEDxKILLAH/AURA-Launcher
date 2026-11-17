@@ -123,6 +123,7 @@ fun AppDrawer(
     focusSearchToken: Int,
     actions: DrawerActions,
     modifier: Modifier = Modifier,
+    topLine: TopLineState = TopLineState.Default,
 ) {
     val rows = remember(apps) {
         buildList {
@@ -188,7 +189,7 @@ fun AppDrawer(
 
     Box(modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().systemBarsPadding()) {
-            AuraTopBar(repo, onGoogle = actions.openGoogle, onLongPressLabel = actions.openSettings)
+            AuraTopBar(repo, onGoogle = actions.openGoogle, topLine = topLine, editable = false)
             Row(Modifier.weight(1f)) {
                 Column(Modifier.weight(1f)) {
                     BigLetter(displayLetter, Modifier.fillMaxWidth().height(164.dp))

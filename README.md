@@ -11,7 +11,8 @@ A minimalist home screen for **Android 17**, with Google Gemini built into the h
 ## Features
 
 ### Minimalist home
-- A large thin clock, the date, and local weather from Open‑Meteo. Weather needs no API key and uses only your coarse location.
+- A large thin clock, the date, and local weather from Open‑Meteo.
+- **Top-left line:** tap "Android 17" to type anything you like there. Clearing it brings the default back, and long-pressing it opens AURA settings. Or switch it to **Weather (At a Glance)** in Settings → Home, which shows current conditions like the Pixel launcher. Tapping the weather opens Pixel Weather or Google's weather. Weather needs no API key and uses only your coarse location.
 - Press and hold for **Wallpaper & style** or **AURA settings**. If you apply a new wallpaper, AURA switches to showing it automatically, with a soft shade so text stays readable. You can switch back to the AURA backdrop from the same menu.
 - The AURA backdrop: a charcoal sky, a diagonal shaft of warm light, and sand dunes with glowing ridges. You can switch to your system wallpaper in settings.
 - A Gemini card above the dock, with nothing else in the way.
@@ -90,7 +91,8 @@ Then tap **Copy report** to share the results for troubleshooting. The report co
 | Swipe right / Back | Close the drawer |
 | Tap the Gemini card / bar / sparkle | Open the Gemini panel |
 | Mic button or long-press the card | Talk to Gemini |
-| Long-press "Android 17" | AURA settings |
+| Tap the top-left text | Edit it |
+| Long-press the top-left text | AURA settings |
 | Tap the clock / date / weather | Clock / Calendar / Weather |
 
 ### Notifications & Quick Settings

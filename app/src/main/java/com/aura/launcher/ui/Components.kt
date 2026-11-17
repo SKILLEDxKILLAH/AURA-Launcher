@@ -60,20 +60,19 @@ private fun IconImage(bmp: ImageBitmap?, size: Dp, modifier: Modifier) {
 
 /** "〜 Android 17" on the left, Google search on the right — shared by home and drawer. */
 @Composable
-fun AuraTopBar(repo: AppRepository, onGoogle: () -> Unit, onLongPressLabel: () -> Unit, modifier: Modifier = Modifier) {
+fun AuraTopBar(
+    repo: AppRepository,
+    onGoogle: () -> Unit,
+    topLine: TopLineState,
+    editable: Boolean,
+    modifier: Modifier = Modifier,
+) {
     Row(
         modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            Modifier.clip(RoundedCornerShape(12.dp)).combinedClickable(onClick = {}, onLongClick = onLongPressLabel).padding(4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            AuraGlyph(Glyph.Pulse, size = 16.dp, color = Aura.Ink)
-            Spacer(Modifier.width(10.dp))
-            Text("Android ${Build.VERSION.RELEASE}", color = Aura.Ink, fontSize = 16.sp, fontFamily = Aura.Sans)
-        }
-        Spacer(Modifier.weight(1f))
+        Box(Modifier.weight(1f)) { TopLine(topLine, editable) }
+        Spacer(Modifier.width(12.dp))
         Box(
             Modifier.size(36.dp).clip(CircleShape).clickable(onClickLabel = "Google search", role = Role.Button, onClick = onGoogle),
             contentAlignment = Alignment.Center,

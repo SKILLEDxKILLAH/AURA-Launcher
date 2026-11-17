@@ -69,7 +69,9 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
         (pinned + frequent).take(8)
     }
 
-    LaunchedEffect(prefs.fahrenheit, prefs.showWeather) { if (prefs.showWeather) vm.refreshWeather() }
+    LaunchedEffect(prefs.fahrenheit, prefs.showWeather, prefs.topLineMode) {
+        if (prefs.showWeather || prefs.topLineMode == com.aura.launcher.data.TopLineMode.WEATHER) vm.refreshWeather()
+    }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val widthPx = constraints.maxWidth.toFloat().coerceAtLeast(1f)
@@ -147,12 +149,24 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
             val launch = context.packageManager.getLaunchIntentForPackage(com.aura.launcher.data.DockResolver.GOOGLE_PACKAGE)
             if (launch == null || !ActivityBridge.start(context, launch)) openDrawer(focusSearch = true)
         }
+        val topLine = TopLineState(
+            mode = prefs.topLineMode,
+            label = prefs.topLabel,
+            weather = vm.weather,
+            weatherNeedsPermission = vm.weatherNeedsPermission,
+            onLabelChange = prefs::updateTopLabel,
+            onWeather = {
+                if (vm.weatherNeedsPermission) requestPermissions(listOf(Manifest.permission.ACCESS_COARSE_LOCATION))
+                else vm.openWeatherApp()
+            },
+            onLongPress = { vm.settingsOpen = true },
+        )
         if (drawer < 0.999f) {
             HomeScreen(
                 repo = vm.repo,
                 dock = vm.dock,
                 weather = vm.weather,
-                showWeather = prefs.showWeather,
+                showWeather = prefs.showWeather && prefs.topLineMode != com.aura.launcher.data.TopLineMode.WEATHER,
                 weatherNeedsPermission = vm.weatherNeedsPermission,
                 actions = HomeActions(
                     openGeminiSheet = { vm.openGemini() },
@@ -165,12 +179,13 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
                     },
                     onWeather = {
                         if (vm.weatherNeedsPermission) requestPermissions(listOf(Manifest.permission.ACCESS_COARSE_LOCATION))
-                        else ActivityBridge.start(context, Intent(Intent.ACTION_WEB_SEARCH).putExtra(android.app.SearchManager.QUERY, "weather"))
+                        else vm.openWeatherApp()
                     },
                     openGoogle = openGoogle,
                     openSettings = { vm.settingsOpen = true },
                     launchDock = vm::launchDock,
                 ),
+                topLine = topLine,
                 modifier = Modifier
                     .graphicsLayer {
                         alpha = (1f - drawer * 2.2f).coerceIn(0f, 1f)
@@ -221,6 +236,7 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
                     openSettings = { vm.settingsOpen = true },
                     launchDock = vm::launchDock,
                 ),
+                topLine = topLine,
                 modifier = Modifier
                     .graphicsLayer {
                         alpha = (drawer * 1.5f).coerceIn(0f, 1f)

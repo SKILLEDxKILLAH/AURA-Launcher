@@ -12,8 +12,8 @@ android {
         // AURA targets Android 17 (API 37) exclusively.
         minSdk = 37
         targetSdk = 37
-        versionCode = 7
-        versionName = "1.5.0"
+        versionCode = 8
+        versionName = "1.6.0"
     }
 
     // One stable signing key for debug and release builds. Google sign-in (OAuth) is registered
