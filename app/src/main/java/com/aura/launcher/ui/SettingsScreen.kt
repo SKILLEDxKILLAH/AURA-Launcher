@@ -84,6 +84,17 @@ fun SettingsScreen(
                 "AURA gestures",
                 (if (gesturesOn) "On" else "Off") + " · swipe down with one finger for notifications, two fingers for Quick Settings",
             ) { ActivityBridge.start(context, Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+            if (!gesturesOn) {
+                ActionRow(
+                    "Greyed out? Allow restricted settings",
+                    "Opens AURA's App info: tap ⋮ → Allow restricted settings, confirm, then turn AURA gestures on",
+                ) {
+                    ActivityBridge.start(
+                        context,
+                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", context.packageName, null)),
+                    )
+                }
+            }
             ActionRow("Wallpaper & style", "Or press and hold anywhere on the home screen") {
                 ActivityBridge.start(context, Intent.createChooser(Intent(Intent.ACTION_SET_WALLPAPER), "Wallpaper & style"))
             }
@@ -151,7 +162,7 @@ fun SettingsScreen(
         }
 
         Group("About") {
-            Text("AURA Launcher 1.4 · Built for Android 17", color = Aura.InkDim, fontSize = 14.sp, modifier = Modifier.padding(6.dp))
+            Text("AURA Launcher 1.4.1 · Built for Android 17", color = Aura.InkDim, fontSize = 14.sp, modifier = Modifier.padding(6.dp))
             Text("Tips: swipe left from the right edge for apps · swipe down for notifications (two fingers: Quick Settings) · press and hold for wallpaper & settings · drag the letters on the right · tap the mic to talk to Gemini · long-press “Android 17” for these settings.",
                 color = Aura.InkFaint, fontSize = 13.sp, modifier = Modifier.padding(6.dp))
         }

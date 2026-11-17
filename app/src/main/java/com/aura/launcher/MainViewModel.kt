@@ -126,6 +126,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         ActivityBridge.start(context, Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
     }
 
+    /** AURA's App info page, where ⋮ → "Allow restricted settings" lives for sideloaded apps. */
+    fun openAuraAppInfo() {
+        ActivityBridge.start(
+            context,
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", context.packageName, null)),
+        )
+    }
+
     fun dismissGestureHint() {
         gestureSetupNeeded = false
         gestureHintDismissed = true

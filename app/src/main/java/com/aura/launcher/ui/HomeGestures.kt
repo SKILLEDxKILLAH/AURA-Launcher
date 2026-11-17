@@ -158,7 +158,7 @@ private fun MenuItem(glyph: Glyph, label: String, onClick: () -> Unit) {
 
 /** One-time prompt shown if the system won't let AURA pull down the shade on its own. */
 @Composable
-fun GestureSetupBanner(onEnable: () -> Unit, onDismiss: () -> Unit) {
+fun GestureSetupBanner(onEnable: () -> Unit, onAppInfo: () -> Unit, onDismiss: () -> Unit) {
     Box(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(), contentAlignment = Alignment.TopCenter) {
         Column(
             Modifier.padding(16.dp).offset(y = 56.dp).fillMaxWidth()
@@ -168,13 +168,19 @@ fun GestureSetupBanner(onEnable: () -> Unit, onDismiss: () -> Unit) {
             Spacer(Modifier.width(4.dp))
             Text(
                 "Turn on “AURA gestures” in Accessibility so one-finger and two-finger swipes can open your " +
-                    "notifications and Quick Settings. It only opens those panels and reads nothing on screen.",
+                    "notifications and Quick Settings. It only opens those panels and reads nothing on screen.\n\n" +
+                    "If it's greyed out (“Controlled by Restricted Setting”): tap App info → ⋮ → " +
+                    "Allow restricted settings, confirm, then turn AURA gestures on.",
                 color = Aura.InkDim, fontSize = 14.sp, fontFamily = Aura.Sans, modifier = Modifier.padding(top = 6.dp),
             )
             Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.End) {
                 Text(
                     "Not now", color = Aura.InkDim, fontSize = 15.sp,
                     modifier = Modifier.clip(RoundedCornerShape(14.dp)).clickable(onClick = onDismiss).padding(12.dp),
+                )
+                Text(
+                    "App info", color = Aura.GeminiViolet, fontSize = 15.sp,
+                    modifier = Modifier.clip(RoundedCornerShape(14.dp)).clickable(onClick = onAppInfo).padding(12.dp),
                 )
                 Text(
                     "Turn on", color = Aura.GeminiViolet, fontSize = 15.sp,

@@ -84,6 +84,8 @@ Requested scopes: `generative-language.retriever` and `cloud-platform` (the pair
 ### Notifications & Quick Settings
 Swipe down anywhere on the home screen: **one finger** opens notifications and **two fingers** open Quick Settings. AURA first tries the same system call other launchers use. If Android blocks it, AURA asks once whether to turn on **AURA gestures** in Accessibility. That service only opens those two panels, and it reads nothing on your screen.
 
+> **"Controlled by Restricted Setting" / "App was denied access"?** Android restricts accessibility for apps installed from an APK file. Open **Settings → Apps → AURA**, tap **⋮** (top right) → **Allow restricted settings**, confirm with your PIN or fingerprint, then turn **AURA gestures** on in Accessibility. The ⋮ option only appears after you've tried to turn the service on once.
+
 ## Requirements
 - **Android 17 (API 37) only.** `minSdk` and `targetSdk` are both 37.
 - Google Play services (for Google sign-in).

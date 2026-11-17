@@ -266,7 +266,7 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
         }
 
         AnimatedVisibility(vm.gestureSetupNeeded, enter = fadeIn(), exit = fadeOut()) {
-            GestureSetupBanner(onEnable = vm::enableGestureService, onDismiss = vm::dismissGestureHint)
+            GestureSetupBanner(onEnable = vm::enableGestureService, onAppInfo = vm::openAuraAppInfo, onDismiss = vm::dismissGestureHint)
         }
 
         AnimatedVisibility(vm.settingsOpen, enter = fadeIn(), exit = fadeOut()) {
