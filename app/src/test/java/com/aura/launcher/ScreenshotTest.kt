@@ -298,6 +298,63 @@ class ScreenshotTest {
         save("thought_chat")
     }
 
+    @Test
+    fun swipeRightOpensFeedAndLeftStillOpensDrawer() {
+        val vm = MainViewModel(context)
+        compose.setContent { AuraTheme { com.aura.launcher.ui.AuraRoot(vm) {} } }
+        compose.onRoot().performTouchInput {
+            down(Offset(40f, height * 0.5f))
+            repeat(8) { moveBy(Offset(width * 0.08f, 0f)) }
+            up()
+        }
+        compose.mainClock.advanceTimeBy(1500)
+        compose.onNodeWithText("Brief me").assertExists()
+        compose.onNodeWithText("Top stories").assertExists()
+        // Swipe left closes the feed…
+        compose.onRoot().performTouchInput {
+            down(Offset(width - 40f, height * 0.6f))
+            repeat(8) { moveBy(Offset(-width * 0.08f, 0f)) }
+            up()
+        }
+        compose.mainClock.advanceTimeBy(1500)
+        compose.onNodeWithText("Brief me").assertDoesNotExist()
+        // …and swiping left again from home opens the app drawer, as before.
+        compose.onRoot().performTouchInput {
+            down(Offset(width - 40f, height * 0.5f))
+            repeat(8) { moveBy(Offset(-width * 0.08f, 0f)) }
+            up()
+        }
+        compose.mainClock.advanceTimeBy(1500)
+        compose.onNodeWithText("Search apps, settings, or ask Gemini…").assertExists()
+    }
+
+    @Test
+    fun newsFeed() {
+        val now = java.time.Instant.now()
+        val stories = listOf(
+            com.aura.launcher.data.NewsStory("City opens a new riverside park with miles of trails", "Example Times", null, "https://example.com/1", now.minusSeconds(1800)),
+            com.aura.launcher.data.NewsStory("Researchers unveil a quieter, more efficient heat pump", "Example Science", null, "https://example.com/2", now.minusSeconds(3 * 3600)),
+            com.aura.launcher.data.NewsStory("Local team clinches playoff spot in overtime thriller", "Example Sports", null, "https://example.com/3", now.minusSeconds(5 * 3600)),
+            com.aura.launcher.data.NewsStory("New phone update brings longer battery life", "Example Tech", null, "https://example.com/4", now.minusSeconds(26 * 3600)),
+        )
+        compose.setContent {
+            AuraTheme {
+                Box(Modifier.fillMaxSize()) {
+                    AuraBackdrop()
+                    com.aura.launcher.ui.FeedScreen(
+                        state = com.aura.launcher.ui.FeedState(
+                            topic = com.aura.launcher.data.NewsTopic.TOP, stories = stories, loading = false, error = null,
+                            weather = WeatherNow(46, "°F", "Clear", Sky.CLEAR, false, high = 52, low = 38),
+                            weatherNeedsPermission = false,
+                        ),
+                        actions = com.aura.launcher.ui.FeedActions({}, {}, {}, {}, {}),
+                    )
+                }
+            }
+        }
+        save("news_feed")
+    }
+
     private fun renderDrawer() {
         val repo = AppRepository(context)
         compose.setContent {

@@ -56,6 +56,11 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
     val focusManager = LocalFocusManager.current
 
     var drawer by remember { mutableFloatStateOf(0f) }
+    /** News feed progress: 0 = closed, 1 = open (slides in from the left). */
+    var feed by remember { mutableFloatStateOf(0f) }
+    var feedJob by remember { mutableStateOf<Job?>(null) }
+    /** Which panel the current horizontal drag drives; decided by the first movement. */
+    var dragTarget by remember { mutableStateOf<String?>(null) }
     var settleJob by remember { mutableStateOf<Job?>(null) }
     var query by rememberSaveable { mutableStateOf("") }
     var focusToken by remember { mutableIntStateOf(0) }
@@ -102,6 +107,53 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
             drawer = (drawer + dx / (widthPx * 0.85f)).coerceIn(0f, 1f)
         }
 
+        // Feed: positive dx (rightward) opens it.
+        fun settleFeed(velocity: Float) {
+            val target = when {
+                velocity > 700f -> 1f
+                velocity < -700f -> 0f
+                feed > 0.4f -> 1f
+                else -> 0f
+            }
+            feedJob?.cancel()
+            feedJob = scope.launch {
+                animate(feed, target, initialVelocity = velocity / widthPx, animationSpec = spring(dampingRatio = 0.88f, stiffness = 420f)) { v, _ ->
+                    feed = v
+                }
+            }
+            if (target == 1f) {
+                vm.loadNews()
+                if (vm.weather == null) vm.refreshWeather()
+            }
+        }
+
+        fun feedDragBy(dx: Float) {
+            feedJob?.cancel()
+            feed = (feed + dx / (widthPx * 0.85f)).coerceIn(0f, 1f)
+        }
+
+        fun closeFeed() = settleFeed(-3000f)
+
+        /** Swipe left from home → app drawer (from the right); swipe right → news feed (from the left). */
+        fun routeDrag(dx: Float) {
+            val target = dragTarget ?: when {
+                drawer > 0f -> "drawer"
+                feed > 0f -> "feed"
+                dx < 0f -> "drawer"
+                dx > 0f -> "feed"
+                else -> return
+            }.also { dragTarget = it }
+            if (target == "drawer") dragBy(-dx) else feedDragBy(dx)
+        }
+
+        fun routeStop(velocity: Float) {
+            when (dragTarget) {
+                "drawer" -> settle(-velocity)
+                "feed" -> settleFeed(velocity)
+            }
+            dragTarget = null
+        }
+
         fun openDrawer(focusSearch: Boolean = false) {
             settle(3000f)
             if (focusSearch) focusToken++
@@ -112,7 +164,9 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
         LaunchedEffect(Unit) {
             vm.resetToHome.collect {
                 settleJob?.cancel()
+                feedJob?.cancel()
                 drawer = 0f
+                feed = 0f
                 query = ""
                 homeMenuAt = null
                 focusManager.clearFocus()
@@ -123,11 +177,12 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
             if (query.isNotEmpty()) query = "" else closeDrawer()
         }
         BackHandler(enabled = homeMenuAt != null) { homeMenuAt = null }
+        BackHandler(enabled = feed > 0f && !vm.geminiSheetOpen && !vm.settingsOpen) { closeFeed() }
         BackHandler(enabled = vm.geminiSheetOpen) { vm.geminiSheetOpen = false }
         BackHandler(enabled = vm.settingsOpen && !vm.diagnosticsOpen) { vm.settingsOpen = false }
         BackHandler(enabled = vm.diagnosticsOpen) { vm.diagnosticsOpen = false }
 
-        val dragState = rememberDraggableState { dragBy(-it) }
+        val dragState = rememberDraggableState { routeDrag(it) }
 
         // ---- Background --------------------------------------------------------------------
         if (prefs.useAuraBackdrop) {
@@ -142,7 +197,7 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
                 )
             )
         }
-        Box(Modifier.fillMaxSize().graphicsLayer { alpha = drawer }.background(Color(0x59000000)))
+        Box(Modifier.fillMaxSize().graphicsLayer { alpha = maxOf(drawer, feed) }.background(Color(0x59000000)))
 
         // ---- Home --------------------------------------------------------------------------
         val openGoogle = {
@@ -161,7 +216,7 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
             },
             onLongPress = { vm.settingsOpen = true },
         )
-        if (drawer < 0.999f) {
+        if (drawer < 0.999f && feed < 0.999f) {
             HomeScreen(
                 repo = vm.repo,
                 dock = vm.dock,
@@ -188,14 +243,15 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
                 topLine = topLine,
                 modifier = Modifier
                     .graphicsLayer {
-                        alpha = (1f - drawer * 2.2f).coerceIn(0f, 1f)
-                        translationX = -drawer * widthPx * 0.25f
+                        alpha = (1f - maxOf(drawer, feed) * 2.2f).coerceIn(0f, 1f)
+                        translationX = (feed - drawer) * widthPx * 0.25f
                         val s = 1f - 0.06f * drawer
                         scaleX = s; scaleY = s
                     }
                     // Lets a swipe that starts right at the right edge reach AURA instead of
                     // the system back gesture (Android caps this at 200dp per edge).
                     .rightEdgeGestureZone()
+                    .leftEdgeGestureZone()
                     // Press and hold → menu; swipe down with 1 finger → notifications, 2 → Quick Settings.
                     .homeGestures(
                         onLongPress = { pos ->
@@ -204,7 +260,37 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
                         },
                         onSwipeDown = { fingers -> vm.pullDown(fingers) },
                     )
-                    .draggable(dragState, Orientation.Horizontal, onDragStopped = { v -> settle(-v) }),
+                    .draggable(dragState, Orientation.Horizontal, onDragStarted = { dragTarget = null }, onDragStopped = { v -> routeStop(v) }),
+            )
+        }
+
+        // ---- News feed (from the left) -----------------------------------------------------
+        if (feed > 0.001f) {
+            FeedScreen(
+                state = FeedState(
+                    topic = vm.newsTopic,
+                    stories = vm.news[vm.newsTopic].orEmpty(),
+                    loading = vm.newsLoading,
+                    error = vm.newsError,
+                    weather = vm.weather,
+                    weatherNeedsPermission = vm.weatherNeedsPermission,
+                ),
+                actions = FeedActions(
+                    selectTopic = { vm.loadNews(it) },
+                    refresh = { vm.loadNews(force = true); vm.refreshWeather() },
+                    openStory = vm::openStory,
+                    briefMe = vm::briefMe,
+                    onWeather = {
+                        if (vm.weatherNeedsPermission) requestPermissions(listOf(Manifest.permission.ACCESS_COARSE_LOCATION))
+                        else vm.openWeatherApp()
+                    },
+                ),
+                modifier = Modifier
+                    .graphicsLayer {
+                        alpha = (feed * 1.5f).coerceIn(0f, 1f)
+                        translationX = -(1f - feed) * widthPx
+                    }
+                    .draggable(dragState, Orientation.Horizontal, onDragStarted = { dragTarget = null }, onDragStopped = { v -> routeStop(v) }),
             )
         }
 
@@ -242,7 +328,7 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
                         alpha = (drawer * 1.5f).coerceIn(0f, 1f)
                         translationX = (1f - drawer) * widthPx
                     }
-                    .draggable(dragState, Orientation.Horizontal, onDragStopped = { v -> settle(-v) }),
+                    .draggable(dragState, Orientation.Horizontal, onDragStarted = { dragTarget = null }, onDragStopped = { v -> routeStop(v) }),
             )
         }
 
@@ -309,6 +395,19 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
                 requestPermissions = requestPermissions,
             ) { vm.settingsOpen = false }
         }
+    }
+}
+
+/** Excludes a 200dp band on the left edge, centered vertically, from the system back gesture. */
+@Composable
+private fun Modifier.leftEdgeGestureZone(): Modifier {
+    val density = LocalDensity.current
+    val band = with(density) { 200.dp.toPx() }
+    val edge = with(density) { 32.dp.toPx() }
+    return systemGestureExclusion { coords ->
+        val h = coords.size.height.toFloat()
+        val top = ((h - band) / 2f).coerceAtLeast(0f)
+        Rect(0f, top, edge, top + band)
     }
 }
 

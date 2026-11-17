@@ -95,12 +95,22 @@ Then tap **Copy report** to share the results for troubleshooting. The report co
 | Swipe down (two fingers) | Quick Settings |
 | Press and hold on empty space | Wallpaper & style, AURA settings |
 | Swipe left from the right side | Open the app drawer |
+| Swipe right from the left side | Open the news feed |
 | Swipe right / Back | Close the drawer |
 | Tap the Gemini card / bar / sparkle | Open the Gemini panel |
 | Mic button or long-press the card | Talk to Gemini |
 | Tap the top-left text | Edit it |
 | Long-press the top-left text | AURA settings |
 | Tap the clock / date / weather | Clock / Calendar / Weather |
+
+### News feed
+Swipe **right** on the home screen and the feed slides in from the left, like the Pixel launcher. It has:
+- a greeting and today's date
+- a weather card with today's high and low (tap to open your weather app)
+- **Brief me**, where Gemini sums up the current headlines in four bullets
+- topic tabs: Top stories, World, Local & national, Business, Technology, Science, Health, Sports and Entertainment
+
+Headlines come from Google News' public feeds for your phone's language and region, and tapping one opens the article. Swipe left or press Back to close it. Swipe left from home still opens the app drawer.
 
 ### Notifications & Quick Settings
 Swipe down anywhere on the home screen: **one finger** opens notifications and **two fingers** open Quick Settings. AURA first tries the same system call other launchers use. If Android blocks it, AURA asks once whether to turn on **AURA gestures** in Accessibility. That service only opens those two panels, and it reads nothing on your screen.

@@ -17,6 +17,9 @@ import com.aura.launcher.data.AuraPrefs
 import com.aura.launcher.data.DockItem
 import com.aura.launcher.data.DockResolver
 import com.aura.launcher.data.GeminiAuthMode
+import com.aura.launcher.data.NewsService
+import com.aura.launcher.data.NewsStory
+import com.aura.launcher.data.NewsTopic
 import com.aura.launcher.data.ThinkingLevel
 import com.aura.launcher.data.TopLineMode
 import com.aura.launcher.data.WeatherNow
@@ -303,6 +306,52 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun selectThinking(level: ThinkingLevel) {
         prefs.updateThinking(level)
+    }
+
+    // ---- News feed ------------------------------------------------------------------------------
+
+    var newsTopic by mutableStateOf(NewsTopic.TOP)
+        private set
+    var news by mutableStateOf<Map<NewsTopic, List<NewsStory>>>(emptyMap())
+        private set
+    var newsLoading by mutableStateOf(false)
+        private set
+    var newsError by mutableStateOf<String?>(null)
+        private set
+    private val newsFetchedAt = mutableMapOf<NewsTopic, Long>()
+
+    /** Loads a section; cached for 15 minutes unless [force]. */
+    fun loadNews(topic: NewsTopic = newsTopic, force: Boolean = false) {
+        newsTopic = topic
+        val fresh = System.currentTimeMillis() - (newsFetchedAt[topic] ?: 0L) < 15 * 60_000
+        if (newsLoading || (!force && fresh && news[topic] != null)) return
+        newsLoading = true
+        newsError = null
+        viewModelScope.launch {
+            try {
+                val stories = NewsService.fetch(topic)
+                news = news + (topic to stories)
+                newsFetchedAt[topic] = System.currentTimeMillis()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                newsError = e.message ?: "Couldn't load the news"
+            } finally {
+                newsLoading = false
+            }
+        }
+    }
+
+    fun openStory(story: NewsStory) {
+        ActivityBridge.start(context, Intent(Intent.ACTION_VIEW, android.net.Uri.parse(story.link)))
+    }
+
+    /** Asks Gemini for a short briefing on the headlines currently shown. */
+    fun briefMe() {
+        val stories = news[newsTopic].orEmpty().take(12)
+        if (stories.isEmpty()) return
+        val list = stories.joinToString("\n") { "- ${it.title} (${it.source})" }
+        ask("Give me a quick spoken-style briefing of today's ${newsTopic.label.lowercase()} in 4 short bullet points, based only on these headlines:\n$list")
     }
 
     // ---- Diagnostics ----------------------------------------------------------------------------

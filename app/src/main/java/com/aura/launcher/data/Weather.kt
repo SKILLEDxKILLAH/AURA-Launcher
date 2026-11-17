@@ -17,7 +17,15 @@ import kotlin.coroutines.resume
 
 enum class Sky { CLEAR, PARTLY, CLOUDY, FOG, RAIN, SNOW, STORM }
 
-data class WeatherNow(val temperature: Int, val unit: String, val description: String, val sky: Sky, val isDay: Boolean)
+data class WeatherNow(
+    val temperature: Int,
+    val unit: String,
+    val description: String,
+    val sky: Sky,
+    val isDay: Boolean,
+    val high: Int? = null,
+    val low: Int? = null,
+)
 
 /** Current conditions from Open-Meteo (free, no API key) using the coarse last-known location. */
 object WeatherService {
@@ -33,7 +41,7 @@ object WeatherService {
                 String.format(
                     Locale.US,
                     "https://api.open-meteo.com/v1/forecast?latitude=%.3f&longitude=%.3f" +
-                        "&current=temperature_2m,weather_code,is_day&temperature_unit=%s",
+                        "&current=temperature_2m,weather_code,is_day&daily=temperature_2m_max,temperature_2m_min&forecast_days=1&timezone=auto&temperature_unit=%s",
                     location.latitude, location.longitude, if (fahrenheit) "fahrenheit" else "celsius",
                 )
             )
@@ -43,7 +51,9 @@ object WeatherService {
             }
             val body = conn.inputStream.bufferedReader().use { it.readText() }
             conn.disconnect()
-            val current = JSONObject(body).getJSONObject("current")
+            val root = JSONObject(body)
+            val current = root.getJSONObject("current")
+            val daily = root.optJSONObject("daily")
             val code = current.getInt("weather_code")
             val (desc, sky) = describe(code)
             WeatherNow(
@@ -52,6 +62,8 @@ object WeatherService {
                 description = desc,
                 sky = sky,
                 isDay = current.optInt("is_day", 1) == 1,
+                high = daily?.optJSONArray("temperature_2m_max")?.optDouble(0)?.takeIf { !it.isNaN() }?.let { Math.round(it).toInt() },
+                low = daily?.optJSONArray("temperature_2m_min")?.optDouble(0)?.takeIf { !it.isNaN() }?.let { Math.round(it).toInt() },
             )
         }.getOrNull()
     }
