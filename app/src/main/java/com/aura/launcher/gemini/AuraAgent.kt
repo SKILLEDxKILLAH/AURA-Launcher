@@ -1,6 +1,7 @@
 package com.aura.launcher.gemini
 
 import android.os.Build
+import com.aura.launcher.data.ThinkingLevel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -18,6 +19,12 @@ class AuraAgent(private val tools: PhoneTools) {
     sealed interface Event {
         data class Reply(val text: String) : Event
         data class Action(val label: String, val ok: Boolean) : Event
+
+        /** The model's thought summary for one step and how long that step took. */
+        data class Thought(val summary: String, val millis: Long) : Event
+
+        /** Something the user should know, e.g. a thinking-level fallback. */
+        data class Notice(val text: String) : Event
     }
 
     private val history = JSONArray()
@@ -31,26 +38,41 @@ class AuraAgent(private val tools: PhoneTools) {
         credential: GeminiCredential,
         model: String,
         appNames: List<String>,
+        thinking: ThinkingLevel = ThinkingLevel.AUTO,
         onEvent: suspend (Event) -> Unit,
     ) {
+        var noticeShown = false
         history.put(JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", prompt))))
         trimHistory()
 
         repeat(MAX_STEPS) {
-            val response = generateAuthorized(credential, model, appNames)
+            val started = System.currentTimeMillis()
+            val result = generateAuthorized(credential, model, appNames, thinking)
+            val response = result.json
+            if (result.note != null && !noticeShown) {
+                noticeShown = true
+                onEvent(Event.Notice(result.note))
+            }
             val content = response.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")
                 ?: throw IOException(blockReason(response))
             if (!content.has("role")) content.put("role", "model")
-            history.put(content)
 
             val parts = content.optJSONArray("parts") ?: JSONArray()
             val calls = mutableListOf<JSONObject>()
             val text = StringBuilder()
+            val thoughts = StringBuilder()
+            val kept = JSONArray()
             for (i in 0 until parts.length()) {
                 val part = parts.getJSONObject(i)
                 part.optJSONObject("functionCall")?.let { calls += it }
-                if (part.has("text") && !part.optBoolean("thought", false)) text.append(part.getString("text"))
+                val isThought = part.optBoolean("thought", false)
+                if (part.has("text")) (if (isThought) thoughts else text).append(part.getString("text"))
+                // Thought summaries are display-only; keep everything else (incl. thought signatures).
+                if (!isThought || part.has("thoughtSignature")) kept.put(part)
             }
+            history.put(JSONObject(content.toString()).put("parts", kept))
+
+            if (thoughts.isNotBlank()) onEvent(Event.Thought(thoughts.toString().trim(), System.currentTimeMillis() - started))
             if (text.isNotBlank()) onEvent(Event.Reply(text.toString().trim()))
             if (calls.isEmpty()) return
 
@@ -68,13 +90,18 @@ class AuraAgent(private val tools: PhoneTools) {
         }
     }
 
-    private suspend fun generateAuthorized(credential: GeminiCredential, model: String, appNames: List<String>): JSONObject {
+    private suspend fun generateAuthorized(
+        credential: GeminiCredential,
+        model: String,
+        appNames: List<String>,
+        thinking: ThinkingLevel,
+    ): ThinkingResponse {
         val body = JSONObject()
             .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", systemPrompt(appNames)))))
             .put("contents", history)
             .put("tools", JSONArray().put(JSONObject().put("functionDeclarations", tools.declarations())))
             .put("toolConfig", JSONObject().put("functionCallingConfig", JSONObject().put("mode", "AUTO")))
-        return GeminiApi.generate(credential, model, body)
+        return GeminiApi.generateThinking(credential, model, body, thinking)
     }
 
     private fun systemPrompt(appNames: List<String>): String {

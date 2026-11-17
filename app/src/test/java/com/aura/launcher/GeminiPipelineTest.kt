@@ -134,4 +134,87 @@ class GeminiPipelineTest {
         val ids = GeminiApi.sortModels(GeminiApi.parseModels(json)).map { it.id }
         assertEquals(listOf("gemini-flash-latest", "gemini-3-pro-preview", "gemini-2.5-pro", "gemini-2.5-flash"), ids)
     }
+
+    private val key = GeminiCredential.ApiKey("test-key")
+    private fun body() = JSONObject().put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", "hi")))))
+    private fun thinkingOf(i: Int) = JSONObject(requests[i].body).optJSONObject("generationConfig")?.optJSONObject("thinkingConfig")
+
+    @Test
+    fun newerModelsGetAThinkingLevel() = runBlocking {
+        responses += 200 to text("ok")
+        val r = GeminiApi.generateThinking(key, "gemini-4-hydrogen", body(), com.aura.launcher.data.ThinkingLevel.HIGH)
+        assertEquals("high", thinkingOf(0)!!.getString("thinkingLevel"))
+        assertEquals(true, thinkingOf(0)!!.getBoolean("includeThoughts"))
+        assertEquals(null, r.note)
+    }
+
+    @Test
+    fun gemini25GetsATokenBudget() = runBlocking {
+        responses += 200 to text("ok")
+        GeminiApi.generateThinking(key, "gemini-2.5-flash", body(), com.aura.launcher.data.ThinkingLevel.MEDIUM)
+        assertEquals(8192, thinkingOf(0)!!.getInt("thinkingBudget"))
+        assertTrue(!thinkingOf(0)!!.has("thinkingLevel"))
+    }
+
+    @Test
+    fun unsupportedLevelStepsToNearestAndIsRemembered() = runBlocking {
+        responses += 400 to """{"error":{"code":400,"message":"thinking_level MEDIUM is not supported for this model."}}"""
+        responses += 200 to text("ok")
+        val r = GeminiApi.generateThinking(key, "gemini-3.7-flash", body(), com.aura.launcher.data.ThinkingLevel.MEDIUM)
+        assertEquals("medium", thinkingOf(0)!!.getString("thinkingLevel"))
+        assertEquals("high", thinkingOf(1)!!.getString("thinkingLevel"))
+        assertEquals(com.aura.launcher.data.ThinkingLevel.HIGH, r.applied)
+        assertTrue(r.note!!.contains("using High"))
+        // Next time it goes straight to the level that worked.
+        responses += 200 to text("ok again")
+        GeminiApi.generateThinking(key, "gemini-3.7-flash", body(), com.aura.launcher.data.ThinkingLevel.MEDIUM)
+        assertEquals(3, requests.size)
+        assertEquals("high", thinkingOf(2)!!.getString("thinkingLevel"))
+    }
+
+    @Test
+    fun modelWithoutThinkingStillAnswers() = runBlocking {
+        // Low is rejected, then Auto (with thought summaries) is rejected, then a bare request succeeds.
+        repeat(2) { responses += 400 to """{"error":{"code":400,"message":"Thinking is not supported by this model."}}""" }
+        responses += 200 to text("plain answer")
+        val r = GeminiApi.generateThinking(key, "gemini-4-argon", body(), com.aura.launcher.data.ThinkingLevel.LOW)
+        assertEquals(3, requests.size)
+        assertEquals("low", thinkingOf(0)!!.getString("thinkingLevel"))
+        assertTrue(!thinkingOf(1)!!.has("thinkingLevel"))
+        assertEquals(null, thinkingOf(2))
+        assertEquals(com.aura.launcher.data.ThinkingLevel.AUTO, r.applied)
+        assertTrue(r.note!!.contains("doesn't support thinking"))
+    }
+
+    @Test
+    fun otherErrorsAreNotMistakenForThinkingProblems() {
+        responses += 404 to """{"error":{"code":404,"message":"models/gemini-x is not found"}}"""
+        val e = runCatching { runBlocking { GeminiApi.generateThinking(key, "gemini-x", body(), com.aura.launcher.data.ThinkingLevel.HIGH) } }.exceptionOrNull()
+        assertTrue(e is com.aura.launcher.gemini.GeminiHttpException && e.code == 404)
+        assertEquals(1, requests.size)
+    }
+
+    @Test
+    fun thoughtSummariesAreShownButNotResent() {
+        val context = ApplicationProvider.getApplicationContext<android.app.Application>()
+        val agent = AuraAgent(PhoneTools(context, AppRepository(context)))
+        responses += 200 to JSONObject().put(
+            "candidates", JSONArray().put(
+                JSONObject().put("content", JSONObject().put("role", "model").put("parts", JSONArray()
+                    .put(JSONObject().put("text", "The user wants a greeting.").put("thought", true))
+                    .put(JSONObject().put("text", "Hello!").put("thoughtSignature", "sig-9"))))
+            )
+        ).toString()
+        responses += 200 to text("Second answer")
+        val events = mutableListOf<AuraAgent.Event>()
+        runBlocking {
+            agent.send("Say hi", key, "gemini-4-hydrogen", emptyList(), com.aura.launcher.data.ThinkingLevel.HIGH) { events += it }
+            agent.send("Again", key, "gemini-4-hydrogen", emptyList(), com.aura.launcher.data.ThinkingLevel.HIGH) { events += it }
+        }
+        assertTrue(events.any { it is AuraAgent.Event.Thought && it.summary == "The user wants a greeting." })
+        assertTrue(events.contains(AuraAgent.Event.Reply("Hello!")))
+        val resent = JSONObject(requests[1].body).getJSONArray("contents").toString()
+        assertTrue(!resent.contains("The user wants a greeting."))
+        assertTrue(resent.contains("sig-9"))
+    }
 }

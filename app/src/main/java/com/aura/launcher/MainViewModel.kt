@@ -17,6 +17,7 @@ import com.aura.launcher.data.AuraPrefs
 import com.aura.launcher.data.DockItem
 import com.aura.launcher.data.DockResolver
 import com.aura.launcher.data.GeminiAuthMode
+import com.aura.launcher.data.ThinkingLevel
 import com.aura.launcher.data.TopLineMode
 import com.aura.launcher.data.WeatherNow
 import com.aura.launcher.data.WeatherService
@@ -35,9 +36,9 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.launch
 
-enum class ChatRole { USER, GEMINI, ACTION, ERROR }
+enum class ChatRole { USER, GEMINI, ACTION, ERROR, THOUGHT, NOTICE }
 
-data class ChatItem(val role: ChatRole, val text: String, val ok: Boolean = true)
+data class ChatItem(val role: ChatRole, val text: String, val ok: Boolean = true, val millis: Long = 0)
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val context get() = getApplication<Application>()
@@ -241,10 +242,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         agentJob = viewModelScope.launch {
             agentBusy = true
             try {
-                agent.send(text, credential, prefs.model, apps.value.map { it.label }.distinct()) { event ->
+                agent.send(text, credential, prefs.model, apps.value.map { it.label }.distinct(), prefs.thinking) { event ->
                     when (event) {
                         is AuraAgent.Event.Reply -> chat += ChatItem(ChatRole.GEMINI, event.text)
                         is AuraAgent.Event.Action -> chat += ChatItem(ChatRole.ACTION, event.label, event.ok)
+                        is AuraAgent.Event.Thought -> chat += ChatItem(ChatRole.THOUGHT, event.summary, millis = event.millis)
+                        is AuraAgent.Event.Notice -> chat += ChatItem(ChatRole.NOTICE, event.text)
                     }
                 }
             } catch (e: CancellationException) {
@@ -296,6 +299,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         agentJob?.cancel()
         agent.reset()
         if (chat.isNotEmpty()) chat += ChatItem(ChatRole.ACTION, "Switched to ${models.firstOrNull { it.id == id }?.displayName ?: id}")
+    }
+
+    fun selectThinking(level: ThinkingLevel) {
+        prefs.updateThinking(level)
     }
 
     // ---- Diagnostics ----------------------------------------------------------------------------

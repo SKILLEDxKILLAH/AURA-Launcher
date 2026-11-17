@@ -54,15 +54,22 @@ Requested scopes: `generative-language.retriever` and `cloud-platform` (the pair
 
 > Usage counts against your Cloud project's Gemini API quota (free tier, or billing if enabled). It does **not** use a consumer Gemini / Google One AI subscription, because Google doesn't let third-party apps use those.
 
-**Choosing a model:** tap the model chip next to your email at the top of the Gemini panel, e.g. **Flash Latest ▾**. The list comes live from Google for your account. It shows only models that can chat and use tools, so embeddings, image, audio and Gemma models are left out. "Latest" aliases come first, then the newest versions. Switching models starts a fresh context.
+**Model & thinking:** the bar under your email shows the current model and thinking level. Tap **Change** to open a panel with:
+- **Best / Balanced / Fastest**: Gemini Pro Latest, Flash Latest and Flash-Lite Latest.
+- **All models**: everything your account can use, fetched live from Google and grouped by version. Image, audio, embedding and Gemma models are left out.
+- **Thinking:** Auto, Minimal, Low, Medium or High.
+  - AURA sends a `thinkingLevel` to Gemini 3 and newer and a token budget to Gemini 2.5.
+  - If a model rejects a level, AURA steps to the closest one it accepts, remembers it, and shows a note in the chat.
+  - When the model reasons, a collapsible "Thought for Ns" summary appears above its reply.
 
 **Gemini check:** tap the model chip → **Run Gemini check**, or go to Settings → Gemini → **Run Gemini check**. It tests, in order:
 1. Your sign-in.
 2. Getting an access token.
 3. Loading the model list.
 4. A real reply.
-5. A real phone-action decision. The tool isn't run.
-6. Permissions.
+5. Which thinking level the model actually used.
+6. A real phone-action decision. The tool isn't run.
+7. Permissions.
 
 Then tap **Copy report** to share the results for troubleshooting. The report contains no tokens or keys.
 

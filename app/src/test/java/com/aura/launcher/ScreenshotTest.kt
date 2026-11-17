@@ -241,6 +241,63 @@ class ScreenshotTest {
         save("weather_top")
     }
 
+    @Test
+    fun modelAndThinkingPanel() {
+        val models = listOf(
+            "gemini-pro-latest" to "Gemini Pro Latest", "gemini-flash-lite-latest" to "Gemini Flash-Lite Latest",
+            "gemini-flash-latest" to "Gemini Flash Latest", "gemini-4-hydrogen" to "Gemini 4 Hydrogen",
+            "gemini-4-carbon" to "Gemini 4 Carbon", "gemini-3.8-flash" to "Gemini 3.8 Flash",
+        ).map { (id, name) -> com.aura.launcher.gemini.GeminiModel(id, name, "") }
+        compose.setContent {
+            AuraTheme {
+                Box(Modifier.fillMaxSize()) {
+                    AuraBackdrop()
+                    com.aura.launcher.ui.GeminiSheet(
+                        state = com.aura.launcher.ui.GeminiSheetState(
+                            chat = emptyList(), busy = false, needsSignIn = false, signingIn = false, signInError = null,
+                            accountLabel = "you@gmail.com", model = "gemini-flash-latest", listenRequest = 0,
+                            models = models, thinking = com.aura.launcher.data.ThinkingLevel.MEDIUM,
+                        ),
+                        onSend = {}, onSignIn = {}, onClear = {}, onOpenSettings = {}, onDismiss = {},
+                    )
+                }
+            }
+        }
+        save("model_bar")
+        compose.onNodeWithText("Change").performClick()
+        compose.mainClock.advanceTimeBy(500)
+        save("model_panel")
+    }
+
+    @Test
+    fun thoughtInChat() {
+        compose.setContent {
+            AuraTheme {
+                Box(Modifier.fillMaxSize()) {
+                    AuraBackdrop()
+                    com.aura.launcher.ui.GeminiSheet(
+                        state = com.aura.launcher.ui.GeminiSheetState(
+                            chat = listOf(
+                                ChatItem(ChatRole.USER, "Plan a quiet evening and set a reminder at 8"),
+                                ChatItem(ChatRole.THOUGHT, "The user wants a calm plan and an alarm at 20:00.", millis = 3400),
+                                ChatItem(ChatRole.ACTION, "Alarm set for 20:00"),
+                                ChatItem(ChatRole.GEMINI, "Done — tea, a short walk and a book. Your 8 PM reminder is set."),
+                                ChatItem(ChatRole.NOTICE, "This model doesn't support Medium; using High"),
+                            ),
+                            busy = false, needsSignIn = false, signingIn = false, signInError = null,
+                            accountLabel = "you@gmail.com", model = "gemini-4-hydrogen", listenRequest = 0,
+                            thinking = com.aura.launcher.data.ThinkingLevel.MEDIUM,
+                        ),
+                        onSend = {}, onSignIn = {}, onClear = {}, onOpenSettings = {}, onDismiss = {},
+                    )
+                }
+            }
+        }
+        compose.onNodeWithText("Thought for 3s  ▸").performClick()
+        compose.mainClock.advanceTimeBy(400)
+        save("thought_chat")
+    }
+
     private fun renderDrawer() {
         val repo = AppRepository(context)
         compose.setContent {

@@ -1,6 +1,8 @@
 package com.aura.launcher.gemini
 
+import com.aura.launcher.data.ThinkingLevel
 import kotlinx.coroutines.Dispatchers
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.IOException
@@ -19,6 +21,9 @@ sealed interface GeminiCredential {
 /** A non-2xx Gemini API response. [message] is user-friendly; [raw] is Google's own text. */
 class GeminiHttpException(val code: Int, message: String, val raw: String) : IOException(message)
 
+/** Result of a generateContent call made with a thinking setting. [note] explains any fallback. */
+data class ThinkingResponse(val json: JSONObject, val applied: ThinkingLevel, val note: String?)
+
 /** A model that can chat and call tools from AURA. */
 data class GeminiModel(val id: String, val displayName: String, val description: String)
 
@@ -27,6 +32,93 @@ object GeminiApi {
     /** Overridable so tests can point AURA at a local fake Gemini server. */
     @androidx.annotation.VisibleForTesting
     internal var baseUrl = "https://generativelanguage.googleapis.com/v1beta/"
+
+    // ---- Thinking -------------------------------------------------------------------------------
+
+    /** Level a model actually accepted for a requested level, learned at runtime. */
+    private val acceptedLevel = ConcurrentHashMap<String, ThinkingLevel>()
+
+    /** Gemini 2.5 uses a token budget; Gemini 3 and newer (and the -latest aliases) use a level. */
+    internal fun usesBudget(model: String) = model.startsWith("gemini-2.5") || model.startsWith("gemini-2.0")
+
+    internal fun thinkingConfig(model: String, level: ThinkingLevel): JSONObject {
+        if (level == ThinkingLevel.AUTO) return JSONObject().put("includeThoughts", true)
+        val config = JSONObject().put("includeThoughts", level != ThinkingLevel.MINIMAL)
+        if (usesBudget(model)) {
+            val pro = model.contains("pro")
+            val budget = when (level) {
+                ThinkingLevel.MINIMAL -> if (pro) 128 else 0
+                ThinkingLevel.LOW -> 1024
+                ThinkingLevel.MEDIUM -> 8192
+                ThinkingLevel.HIGH -> if (pro) 32768 else 24576
+                ThinkingLevel.AUTO -> -1
+            }
+            config.put("thinkingBudget", budget)
+        } else {
+            config.put("thinkingLevel", level.name.lowercase())
+        }
+        return config
+    }
+
+    /** What to try next if a model rejects [level]: nearest supported level, then the model's default. */
+    private fun fallbacks(level: ThinkingLevel): List<ThinkingLevel> = when (level) {
+        ThinkingLevel.MINIMAL -> listOf(ThinkingLevel.MINIMAL, ThinkingLevel.LOW, ThinkingLevel.AUTO)
+        ThinkingLevel.MEDIUM -> listOf(ThinkingLevel.MEDIUM, ThinkingLevel.HIGH, ThinkingLevel.LOW, ThinkingLevel.AUTO)
+        ThinkingLevel.LOW -> listOf(ThinkingLevel.LOW, ThinkingLevel.AUTO)
+        ThinkingLevel.HIGH -> listOf(ThinkingLevel.HIGH, ThinkingLevel.AUTO)
+        ThinkingLevel.AUTO -> listOf(ThinkingLevel.AUTO)
+    }
+
+    /**
+     * generateContent with the requested thinking level. If the model rejects that level, steps to
+     * the nearest one it accepts (remembered for next time) and finally to the model's own default,
+     * so a thinking setting never breaks Gemini.
+     */
+    suspend fun generateThinking(
+        credential: GeminiCredential,
+        model: String,
+        body: JSONObject,
+        level: ThinkingLevel,
+    ): ThinkingResponse {
+        val key = "$model|$level"
+        if (model in noThinkingConfig) {
+            return ThinkingResponse(generate(credential, model, withThinking(body, null)), ThinkingLevel.AUTO, unsupportedNote(level))
+        }
+        val ladder = acceptedLevel[key]?.let { listOf(it) } ?: fallbacks(level)
+        for (attempt in ladder) {
+            try {
+                val json = generate(credential, model, withThinking(body, thinkingConfig(model, attempt)))
+                acceptedLevel[key] = attempt
+                val note = when {
+                    attempt == level -> null
+                    attempt == ThinkingLevel.AUTO -> "This model doesn't take a thinking level, so it chose its own"
+                    else -> "This model doesn't support ${level.label}; using ${attempt.label}"
+                }
+                return ThinkingResponse(json, attempt, note)
+            } catch (e: GeminiHttpException) {
+                if (!isThinkingRejection(e)) throw e
+            }
+        }
+        // Every thinking setting was rejected: this model takes none at all.
+        val json = generate(credential, model, withThinking(body, null))
+        noThinkingConfig += model
+        return ThinkingResponse(json, ThinkingLevel.AUTO, unsupportedNote(level))
+    }
+
+    private val noThinkingConfig = ConcurrentHashMap.newKeySet<String>()
+
+    private fun unsupportedNote(level: ThinkingLevel) =
+        if (level == ThinkingLevel.AUTO) null else "This model doesn't support thinking settings"
+
+    private fun isThinkingRejection(e: GeminiHttpException) = e.code == 400 && e.raw.contains("think", ignoreCase = true)
+
+    private fun withThinking(body: JSONObject, config: JSONObject?): JSONObject {
+        val request = JSONObject(body.toString())
+        val generationConfig = request.optJSONObject("generationConfig") ?: JSONObject()
+        if (config != null) generationConfig.put("thinkingConfig", config) else generationConfig.remove("thinkingConfig")
+        if (generationConfig.length() > 0) request.put("generationConfig", generationConfig) else request.remove("generationConfig")
+        return request
+    }
 
     suspend fun generate(credential: GeminiCredential, model: String, body: JSONObject): JSONObject =
         call(credential, "POST", "models/${URLEncoder.encode(model, "UTF-8")}:generateContent", body)

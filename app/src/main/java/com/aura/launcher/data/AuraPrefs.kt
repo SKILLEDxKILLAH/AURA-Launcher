@@ -7,6 +7,15 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.edit
 import java.util.Locale
 
+/** How hard Gemini thinks before answering. AUTO lets the model decide. */
+enum class ThinkingLevel(val label: String, val blurb: String) {
+    AUTO("Auto", "The model decides how much to think"),
+    MINIMAL("Minimal", "Fastest replies, least reasoning"),
+    LOW("Low", "Quick, light reasoning"),
+    MEDIUM("Medium", "Balanced speed and depth"),
+    HIGH("High", "Deepest reasoning, slowest replies"),
+}
+
 /** What sits at the top-left of the home screen. */
 enum class TopLineMode { LABEL, WEATHER }
 
@@ -37,6 +46,10 @@ class AuraPrefs(context: Context) {
         private set
     var model by mutableStateOf(sp.getString(K_MODEL, DEFAULT_MODEL) ?: DEFAULT_MODEL)
         private set
+    var thinking by mutableStateOf(
+        runCatching { ThinkingLevel.valueOf(sp.getString(K_THINKING, null) ?: "") }.getOrDefault(ThinkingLevel.AUTO)
+    )
+        private set
     var topLineMode by mutableStateOf(
         runCatching { TopLineMode.valueOf(sp.getString(K_TOP_MODE, null) ?: "") }.getOrDefault(TopLineMode.LABEL)
     )
@@ -62,6 +75,8 @@ class AuraPrefs(context: Context) {
         accountName = name
         sp.edit { putString(K_ACCOUNT_EMAIL, email); putString(K_ACCOUNT_NAME, name) }
     }
+
+    fun updateThinking(v: ThinkingLevel) { thinking = v; sp.edit { putString(K_THINKING, v.name) } }
 
     fun updateTopLineMode(v: TopLineMode) { topLineMode = v; sp.edit { putString(K_TOP_MODE, v.name) } }
 
@@ -95,6 +110,7 @@ class AuraPrefs(context: Context) {
         private const val K_MODEL = "gemini_model"
         private const val K_FAVORITES = "favorites"
         private const val K_TOP_MODE = "top_line_mode"
+        private const val K_THINKING = "gemini_thinking"
         private const val K_TOP_LABEL = "top_label"
         const val MAX_LABEL = 40
     }

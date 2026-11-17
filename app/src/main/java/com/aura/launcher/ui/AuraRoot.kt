@@ -265,6 +265,7 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
                     models = vm.models,
                     modelsLoading = vm.modelsLoading,
                     modelsError = vm.modelsError,
+                    thinking = prefs.thinking,
                 ),
                 onSend = { vm.ask(it) },
                 onSignIn = { vm.signIn() },
@@ -274,6 +275,7 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
                 onLoadModels = { vm.loadModels() },
                 onSelectModel = vm::selectModel,
                 onRunCheck = vm::runDiagnostics,
+                onSelectThinking = vm::selectThinking,
             )
         }
 

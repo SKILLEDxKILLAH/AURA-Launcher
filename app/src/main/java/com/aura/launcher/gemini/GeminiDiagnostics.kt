@@ -63,14 +63,22 @@ object GeminiDiagnostics {
             )
         }.onFailure { emit(CheckResult("Models", false, describe(it))) }
 
-        // 4. Plain reply
+        // 4. Plain reply with the chosen thinking level
         val t1 = System.currentTimeMillis()
         val reply = runCatching {
             val body = JSONObject().put("contents", JSONArray().put(userText("Reply with exactly: AURA OK")))
-            textOf(GeminiApi.generate(credential, prefs.model, body))
+            GeminiApi.generateThinking(credential, prefs.model, body, prefs.thinking)
         }
-        reply.onSuccess { emit(CheckResult("Gemini reply", it.isNotBlank(), "“${it.trim().take(60)}” in ${System.currentTimeMillis() - t1} ms")) }
-            .onFailure { emit(CheckResult("Gemini reply", false, describe(it))); return }
+        reply.onSuccess { r ->
+            val text = textOf(r.json)
+            emit(CheckResult("Gemini reply", text.isNotBlank(), "“${text.trim().take(60)}” in ${System.currentTimeMillis() - t1} ms"))
+            emit(
+                CheckResult(
+                    "Thinking", if (r.note == null) true else null,
+                    "Asked for ${prefs.thinking.label}; model used ${r.applied.label}" + (r.note?.let { " — $it" } ?: ""),
+                )
+            )
+        }.onFailure { emit(CheckResult("Gemini reply", false, describe(it))); return }
 
         // 5. Function calling (Gemini choosing a phone tool). The tool is NOT executed.
         val t2 = System.currentTimeMillis()

@@ -84,6 +84,7 @@ data class GeminiSheetState(
     val models: List<com.aura.launcher.gemini.GeminiModel> = emptyList(),
     val modelsLoading: Boolean = false,
     val modelsError: String? = null,
+    val thinking: com.aura.launcher.data.ThinkingLevel = com.aura.launcher.data.ThinkingLevel.AUTO,
 )
 
 @Composable
@@ -97,7 +98,9 @@ fun GeminiSheet(
     onLoadModels: () -> Unit = {},
     onSelectModel: (String) -> Unit = {},
     onRunCheck: () -> Unit = {},
+    onSelectThinking: (com.aura.launcher.data.ThinkingLevel) -> Unit = {},
 ) {
+    var panelOpen by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var text by rememberSaveable { mutableStateOf("") }
@@ -142,26 +145,36 @@ fun GeminiSheet(
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text("Gemini", color = Aura.Ink, fontSize = 20.sp, fontFamily = Aura.Sans)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            state.accountLabel ?: "Built into AURA",
-                            color = Aura.InkDim, fontSize = 13.sp, fontFamily = Aura.Sans, maxLines = 1,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false),
-                        )
-                        if (!state.needsSignIn) {
-                            Spacer(Modifier.width(8.dp))
-                            ModelPicker(state, onLoadModels, onSelectModel, onRunCheck)
-                        }
-                    }
+                    Text(
+                        state.accountLabel ?: "Built into AURA",
+                        color = Aura.InkDim, fontSize = 13.sp, fontFamily = Aura.Sans, maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    )
                 }
-                if (state.chat.isNotEmpty()) SmallTextButton("New chat", onClear)
+                if (state.chat.isNotEmpty() && !panelOpen) SmallTextButton("New chat", onClear)
                 IconCircle(Glyph.Close, "Close", onDismiss)
             }
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(12.dp))
 
             if (state.needsSignIn) {
                 SignInCard(state.signingIn, state.signInError, onSignIn, onOpenSettings)
+                return@Column
+            }
+
+            ModelBar(state, expanded = panelOpen) {
+                panelOpen = !panelOpen
+                if (panelOpen) { voice.stop(); onLoadModels() }
+            }
+            Spacer(Modifier.height(12.dp))
+            if (panelOpen) {
+                ModelPanel(
+                    state = state,
+                    onSelectModel = onSelectModel,
+                    onSelectThinking = onSelectThinking,
+                    onRetry = onLoadModels,
+                    onRunCheck = { panelOpen = false; onRunCheck() },
+                    onDone = { panelOpen = false },
+                )
                 return@Column
             }
 
@@ -237,64 +250,6 @@ fun GeminiSheet(
         }
     }
 }
-
-/** Compact "Flash Latest ▾" chip next to the account; opens a menu of the account's models. */
-@Composable
-private fun ModelPicker(
-    state: GeminiSheetState,
-    onLoad: () -> Unit,
-    onSelect: (String) -> Unit,
-    onRunCheck: () -> Unit,
-) {
-    var open by remember { mutableStateOf(false) }
-    val current = state.models.firstOrNull { it.id == state.model }?.displayName ?: prettyModel(state.model)
-    Box {
-        Row(
-            Modifier.clip(RoundedCornerShape(14.dp)).background(Aura.Glass)
-                .clickable(onClickLabel = "Choose Gemini model") { open = true; onLoad() }
-                .padding(start = 10.dp, end = 6.dp, top = 3.dp, bottom = 3.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(current, color = Aura.Ink, fontSize = 12.sp, fontFamily = Aura.Sans, maxLines = 1)
-            Text(" ▾", color = Aura.InkDim, fontSize = 12.sp)
-        }
-        androidx.compose.material3.DropdownMenu(
-            expanded = open,
-            onDismissRequest = { open = false },
-            modifier = Modifier.heightIn(max = 420.dp),
-        ) {
-            when {
-                state.modelsLoading && state.models.isEmpty() -> androidx.compose.material3.DropdownMenuItem(
-                    text = { Text("Loading models…") }, onClick = {}, enabled = false,
-                )
-                state.modelsError != null && state.models.isEmpty() -> androidx.compose.material3.DropdownMenuItem(
-                    text = { Text("Couldn't load models — tap to retry\n${state.modelsError}", fontSize = 13.sp) },
-                    onClick = onLoad,
-                )
-            }
-            state.models.forEach { m ->
-                androidx.compose.material3.DropdownMenuItem(
-                    text = {
-                        Column {
-                            Text(m.displayName, fontSize = 15.sp)
-                            Text(m.id, fontSize = 11.sp, color = Aura.InkFaint)
-                        }
-                    },
-                    trailingIcon = { if (m.id == state.model) Text("✓", color = Aura.GeminiViolet) },
-                    onClick = { open = false; onSelect(m.id) },
-                )
-            }
-            androidx.compose.material3.HorizontalDivider()
-            androidx.compose.material3.DropdownMenuItem(
-                text = { Text("Run Gemini check") },
-                onClick = { open = false; onRunCheck() },
-            )
-        }
-    }
-}
-
-private fun prettyModel(id: String) =
-    id.removePrefix("gemini-").split('-').joinToString(" ") { it.replaceFirstChar(Char::uppercase) }
 
 @Composable
 private fun SignInCard(signingIn: Boolean, error: String?, onSignIn: () -> Unit, onOpenSettings: () -> Unit) {
@@ -388,6 +343,8 @@ private fun ChatBubble(item: ChatItem) {
             Text(item.text, color = Aura.InkDim, fontSize = 14.sp, fontFamily = Aura.Sans)
         }
         ChatRole.ERROR -> Text(item.text, color = Color(0xFFFFB4A9), fontSize = 14.sp, modifier = Modifier.padding(start = 28.dp))
+        ChatRole.THOUGHT -> ThoughtBubble(item)
+        ChatRole.NOTICE -> Text("ⓘ  ${item.text}", color = Aura.InkFaint, fontSize = 13.sp, fontFamily = Aura.Sans, modifier = Modifier.padding(start = 28.dp))
     }
 }
 
