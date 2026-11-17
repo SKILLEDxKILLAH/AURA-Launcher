@@ -140,8 +140,8 @@ fun SettingsScreen(
         }
 
         Group("About") {
-            Text("AURA Launcher 1.2 · Built for Android 17", color = Aura.InkDim, fontSize = 14.sp, modifier = Modifier.padding(6.dp))
-            Text("Tips: swipe right for apps · drag the letters on the right · tap the mic to talk to Gemini · long-press “Android 17” for these settings.",
+            Text("AURA Launcher 1.3 · Built for Android 17", color = Aura.InkDim, fontSize = 14.sp, modifier = Modifier.padding(6.dp))
+            Text("Tips: swipe left from the right edge for apps · drag the letters on the right · tap the mic to talk to Gemini · long-press “Android 17” for these settings.",
                 color = Aura.InkFaint, fontSize = 13.sp, modifier = Modifier.padding(6.dp))
         }
         Spacer(Modifier.height(40.dp))

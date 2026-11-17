@@ -72,7 +72,8 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val widthPx = constraints.maxWidth.toFloat().coerceAtLeast(1f)
 
-        // velocity > 0 means a rightward fling (opening), < 0 leftward (closing).
+        // Internally, positive = toward open. The drawer opens with a leftward swipe from the
+        // right edge, so raw horizontal deltas/velocities are negated where gestures feed in.
         fun settle(velocity: Float) {
             val target = when {
                 velocity > 700f -> 1f
@@ -119,7 +120,7 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
         BackHandler(enabled = vm.geminiSheetOpen) { vm.geminiSheetOpen = false }
         BackHandler(enabled = vm.settingsOpen) { vm.settingsOpen = false }
 
-        val dragState = rememberDraggableState { dragBy(it) }
+        val dragState = rememberDraggableState { dragBy(-it) }
 
         // ---- Background --------------------------------------------------------------------
         if (prefs.useAuraBackdrop) AuraBackdrop(drift = drawer)
@@ -157,14 +158,14 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
                 modifier = Modifier
                     .graphicsLayer {
                         alpha = (1f - drawer * 2.2f).coerceIn(0f, 1f)
-                        translationX = drawer * widthPx * 0.25f
+                        translationX = -drawer * widthPx * 0.25f
                         val s = 1f - 0.06f * drawer
                         scaleX = s; scaleY = s
                     }
-                    // Lets a swipe that starts right at the left edge reach AURA instead of
+                    // Lets a swipe that starts right at the right edge reach AURA instead of
                     // the system back gesture (Android caps this at 200dp per edge).
-                    .leftEdgeGestureZone()
-                    .draggable(dragState, Orientation.Horizontal, onDragStopped = { v -> settle(v) }),
+                    .rightEdgeGestureZone()
+                    .draggable(dragState, Orientation.Horizontal, onDragStopped = { v -> settle(-v) }),
             )
         }
 
@@ -199,9 +200,9 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
                 modifier = Modifier
                     .graphicsLayer {
                         alpha = (drawer * 1.5f).coerceIn(0f, 1f)
-                        translationX = -(1f - drawer) * widthPx
+                        translationX = (1f - drawer) * widthPx
                     }
-                    .draggable(dragState, Orientation.Horizontal, onDragStopped = { v -> settle(v) }),
+                    .draggable(dragState, Orientation.Horizontal, onDragStopped = { v -> settle(-v) }),
             )
         }
 
@@ -243,15 +244,16 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
     }
 }
 
-/** Excludes a 200dp band on the left edge, centered vertically, from the system back gesture. */
+/** Excludes a 200dp band on the right edge, centered vertically, from the system back gesture. */
 @Composable
-private fun Modifier.leftEdgeGestureZone(): Modifier {
+private fun Modifier.rightEdgeGestureZone(): Modifier {
     val density = LocalDensity.current
     val band = with(density) { 200.dp.toPx() }
     val edge = with(density) { 32.dp.toPx() }
     return systemGestureExclusion { coords ->
         val h = coords.size.height.toFloat()
         val top = ((h - band) / 2f).coerceAtLeast(0f)
-        Rect(0f, top, edge, top + band)
+        val w = coords.size.width.toFloat()
+        Rect(w - edge, top, w, top + band)
     }
 }

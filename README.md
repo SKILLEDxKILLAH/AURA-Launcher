@@ -55,7 +55,7 @@ Requested scopes: `generative-language.retriever` and `cloud-platform` (the pair
 **Advanced:** under Settings → Gemini → Advanced you can change the model (default `gemini-flash-latest`) or use an AI Studio API key instead of signing in.
 
 ### App drawer
-- Swipe right from the left side of the screen; the drawer slides in from the left.
+- Swipe left from the right side of the screen; the drawer slides in from the right.
 - A big serif watermark shows the current section letter (**M**, **G** and so on). The current section stays fully visible while sections further down fade out.
 - One search bar covers apps, settings shortcuts, **Ask Gemini** and web search.
 - **Lettered scroll animation**: press and drag the A–Z column on the right edge.
@@ -70,8 +70,8 @@ Requested scopes: `generative-language.retriever` and `cloud-platform` (the pair
 ### Gestures
 | Gesture | Action |
 |---|---|
-| Swipe right from the left side | Open the app drawer |
-| Swipe left / Back | Close the drawer |
+| Swipe left from the right side | Open the app drawer |
+| Swipe right / Back | Close the drawer |
 | Tap the Gemini card / bar / sparkle | Open the Gemini panel |
 | Mic button or long-press the card | Talk to Gemini |
 | Long-press "Android 17" | AURA settings |

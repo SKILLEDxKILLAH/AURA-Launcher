@@ -99,13 +99,13 @@ class ScreenshotTest {
     }
 
     @Test
-    fun swipeFromLeftOpensDrawer() {
+    fun swipeFromRightOpensDrawer() {
         val vm = MainViewModel(context)
         compose.setContent { AuraTheme { com.aura.launcher.ui.AuraRoot(vm) {} } }
         compose.onRoot().performTouchInput {
-            down(Offset(12f, height * 0.5f))
-            moveBy(Offset(width * 0.2f, 0f))
-            moveBy(Offset(width * 0.2f, 0f))
+            down(Offset(width - 12f, height * 0.5f))
+            moveBy(Offset(-width * 0.2f, 0f))
+            moveBy(Offset(-width * 0.2f, 0f))
         }
         compose.mainClock.advanceTimeBy(300)
         save("swipe_midway")
