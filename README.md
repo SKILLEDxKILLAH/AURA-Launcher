@@ -13,7 +13,7 @@ A minimalist home screen for **Android 17**, with Google Gemini built into the h
 ### Minimalist home
 - A large thin clock, the date, and local weather from Open‑Meteo. Weather needs no API key and uses only your coarse location.
 - The AURA backdrop: a charcoal sky, a diagonal shaft of warm light, and sand dunes with glowing ridges. You can switch to your system wallpaper in settings.
-- A Gemini card and four quick actions: **Call a contact**, **Send a message**, **Change a setting** and **Open an app**.
+- A Gemini card above the dock, with nothing else in the way.
 - A dock with your real default Phone, Messages, Browser, Photos and Camera apps.
 
 ### Gemini on the home screen
@@ -39,7 +39,7 @@ AURA gives you two ways to use Gemini (choose one in **Settings → Gemini**):
    Get an API key at [aistudio.google.com](https://aistudio.google.com) and paste it in settings. The default model is `gemini-flash-latest`, and you can change it. The key is stored only on your device and is sent only to Google's Gemini API.
 
 ### App drawer
-- Swipe up anywhere on the home screen, or tap **Open an app**.
+- Swipe right from the left side of the screen; the drawer slides in from the left.
 - A big serif watermark shows the current section letter (**M**, **G** and so on). The current section stays fully visible while sections further down fade out.
 - One search bar covers apps, settings shortcuts, **Ask Gemini** and web search.
 - **Lettered scroll animation**: press and drag the A–Z column on the right edge.
@@ -54,8 +54,8 @@ AURA gives you two ways to use Gemini (choose one in **Settings → Gemini**):
 ### Gestures
 | Gesture | Action |
 |---|---|
-| Swipe up on home | Open the app drawer |
-| Pull down at the top of the drawer / Back | Close the drawer |
+| Swipe right from the left side | Open the app drawer |
+| Swipe left / Back | Close the drawer |
 | Tap the Gemini card | Open the Gemini panel |
 | Long-press the Gemini card | Open the full Gemini app |
 | Mic button | Talk to Gemini |

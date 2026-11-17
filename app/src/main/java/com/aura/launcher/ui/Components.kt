@@ -155,18 +155,6 @@ fun SparkleFab(onClick: () -> Unit, onLongClick: () -> Unit, modifier: Modifier 
 }
 
 @Composable
-fun QuickChip(glyph: Glyph, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Row(
-        modifier.height(50.dp).glass(RoundedCornerShape(25.dp)).clickable(onClick = onClick).padding(horizontal = 18.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        AuraGlyph(glyph, size = 20.dp, color = Aura.Ink)
-        Spacer(Modifier.width(12.dp))
-        Text(label, color = Aura.Ink, fontSize = 14.sp, fontFamily = Aura.Sans, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
-}
-
-@Composable
 fun Dock(items: List<DockItem>, repo: AppRepository, onLaunch: (DockItem) -> Unit, modifier: Modifier = Modifier) {
     Row(
         modifier.fillMaxWidth().padding(horizontal = 24.dp),

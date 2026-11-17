@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -74,7 +73,7 @@ class ScreenshotTest {
                         repo = repo, dock = emptyList(),
                         weather = WeatherNow(72, "°F", "Partly cloudy", Sky.PARTLY, true),
                         showWeather = true, weatherNeedsPermission = false,
-                        actions = HomeActions({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}),
+                        actions = HomeActions({}, {}, {}, {}, {}, {}, {}, {}, {}),
                     )
                 }
             }
@@ -99,6 +98,22 @@ class ScreenshotTest {
         save("drawer_scrub")
     }
 
+    @Test
+    fun swipeFromLeftOpensDrawer() {
+        val vm = MainViewModel(context)
+        compose.setContent { AuraTheme { com.aura.launcher.ui.AuraRoot(vm) {} } }
+        compose.onRoot().performTouchInput {
+            down(Offset(12f, height * 0.5f))
+            moveBy(Offset(width * 0.2f, 0f))
+            moveBy(Offset(width * 0.2f, 0f))
+        }
+        compose.mainClock.advanceTimeBy(300)
+        save("swipe_midway")
+        compose.onRoot().performTouchInput { up() }
+        compose.mainClock.advanceTimeBy(1500)
+        save("swipe_open")
+    }
+
     private fun renderDrawer() {
         val repo = AppRepository(context)
         compose.setContent {
@@ -108,7 +123,7 @@ class ScreenshotTest {
                     AppDrawer(
                         apps = sampleApps, favorites = sampleApps.take(3), favoriteKeys = emptySet(), repo = repo,
                         dock = emptyList(), query = "", onQueryChange = {}, focusSearchToken = 0,
-                        nestedScrollConnection = object : NestedScrollConnection {}, actions = noopDrawer,
+                        actions = noopDrawer,
                     )
                 }
             }

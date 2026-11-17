@@ -59,8 +59,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
@@ -123,7 +121,6 @@ fun AppDrawer(
     query: String,
     onQueryChange: (String) -> Unit,
     focusSearchToken: Int,
-    nestedScrollConnection: NestedScrollConnection,
     actions: DrawerActions,
     modifier: Modifier = Modifier,
 ) {
@@ -210,7 +207,7 @@ fun AppDrawer(
                         if (query.isBlank()) {
                             LazyColumn(
                                 state = listState,
-                                modifier = Modifier.fillMaxSize().fadeMask().nestedScroll(nestedScrollConnection),
+                                modifier = Modifier.fillMaxSize().fadeMask(),
                                 contentPadding = PaddingValues(start = 14.dp, end = 4.dp, bottom = 88.dp),
                             ) {
                                 items(rows, key = { it.key }, contentType = { it is DrawerRow.Header }) { row ->
@@ -226,7 +223,7 @@ fun AppDrawer(
                                 }
                             }
                         } else {
-                            SearchResults(query, repo, favoriteKeys, actions, nestedScrollConnection)
+                            SearchResults(query, repo, favoriteKeys, actions)
                         }
                         SparkleFab(
                             onClick = actions.openGeminiApp,
@@ -445,12 +442,11 @@ private fun SearchResults(
     repo: AppRepository,
     favoriteKeys: Set<String>,
     actions: DrawerActions,
-    nestedScrollConnection: NestedScrollConnection,
 ) {
     val apps = remember(query) { repo.findApps(query, 8) }
     val settings = remember(query) { SettingShortcuts.search(query) }
     LazyColumn(
-        Modifier.fillMaxSize().nestedScroll(nestedScrollConnection),
+        Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 14.dp, end = 18.dp, bottom = 88.dp),
     ) {
         item(key = "ask") {

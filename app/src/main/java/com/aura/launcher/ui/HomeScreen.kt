@@ -2,7 +2,6 @@ package com.aura.launcher.ui
 
 import android.text.format.DateFormat
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -40,10 +39,6 @@ data class HomeActions(
     val openGeminiSheet: () -> Unit,
     val openGeminiApp: () -> Unit,
     val geminiVoice: () -> Unit,
-    val callContact: () -> Unit,
-    val sendMessage: () -> Unit,
-    val changeSetting: () -> Unit,
-    val openAppSearch: () -> Unit,
     val openClock: () -> Unit,
     val openCalendar: () -> Unit,
     val onWeather: () -> Unit,
@@ -73,7 +68,7 @@ fun HomeScreen(
             onDate = actions.openCalendar,
             onWeather = actions.onWeather,
         )
-        Spacer(Modifier.weight(2.4f))
+        Spacer(Modifier.weight(3f))
 
         GeminiCard(
             onOpen = actions.openGeminiSheet,
@@ -81,18 +76,7 @@ fun HomeScreen(
             onMic = actions.geminiVoice,
             modifier = Modifier.padding(horizontal = 16.dp),
         )
-        Spacer(Modifier.height(18.dp))
-        Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                QuickChip(Glyph.Phone, "Call a contact", actions.callContact, Modifier.weight(1f))
-                QuickChip(Glyph.Message, "Send a message", actions.sendMessage, Modifier.weight(1f))
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                QuickChip(Glyph.Gear, "Change a setting", actions.changeSetting, Modifier.weight(1f))
-                QuickChip(Glyph.Grid, "Open an app", actions.openAppSearch, Modifier.weight(1f))
-            }
-        }
-        Spacer(Modifier.weight(0.5f))
+        Spacer(Modifier.height(36.dp))
         Dock(dock, repo, actions.launchDock, Modifier.padding(bottom = 18.dp))
     }
 }

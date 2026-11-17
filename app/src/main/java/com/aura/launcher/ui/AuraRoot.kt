@@ -1,16 +1,10 @@
 package com.aura.launcher.ui
 
 import android.Manifest
-import android.app.Activity
 import android.content.ContentUris
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.net.Uri
 import android.provider.CalendarContract
-import android.provider.ContactsContract
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.spring
@@ -19,25 +13,12 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -48,27 +29,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.unit.Velocity
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.systemGestureExclusion
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.aura.launcher.ActivityBridge
 import com.aura.launcher.MainViewModel
 import com.aura.launcher.data.DockResolver
-import com.aura.launcher.data.SettingShortcut
 import com.aura.launcher.data.SettingShortcuts
 import com.aura.launcher.gemini.GeminiBridge
-import com.aura.launcher.ui.theme.Aura
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -85,7 +60,6 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
     var settleJob by remember { mutableStateOf<Job?>(null) }
     var query by rememberSaveable { mutableStateOf("") }
     var focusToken by remember { mutableIntStateOf(0) }
-    var settingsPicker by remember { mutableStateOf(false) }
 
     val favorites = remember(apps, prefs.favorites, counts) {
         val pinned = apps.filter { it.key in prefs.favorites }
@@ -96,41 +70,20 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
 
     LaunchedEffect(prefs.fahrenheit, prefs.showWeather) { if (prefs.showWeather) vm.refreshWeather() }
 
-    // Contact picker shared by "Call a contact" and "Send a message".
-    var pickForMessage by remember { mutableStateOf(false) }
-    val contactPicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
-        val uri = res.data?.data
-        if (res.resultCode != Activity.RESULT_OK || uri == null) return@rememberLauncherForActivityResult
-        val number = context.contentResolver.query(uri, arrayOf(ContactsContract.CommonDataKinds.Phone.NUMBER), null, null, null)
-            ?.use { c -> if (c.moveToFirst()) c.getString(0) else null } ?: return@rememberLauncherForActivityResult
-        val intent = if (pickForMessage) {
-            Intent(Intent.ACTION_SENDTO, "smsto:${Uri.encode(number)}".toUri())
-        } else {
-            val canCall = context.checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
-            Intent(if (canCall) Intent.ACTION_CALL else Intent.ACTION_DIAL, "tel:${Uri.encode(number)}".toUri())
-        }
-        ActivityBridge.start(context, intent)
-    }
-    fun pickContact(forMessage: Boolean) {
-        pickForMessage = forMessage
-        runCatching {
-            contactPicker.launch(Intent(Intent.ACTION_PICK, ContactsContract.CommonDataKinds.Phone.CONTENT_URI))
-        }
-    }
-
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val heightPx = constraints.maxHeight.toFloat().coerceAtLeast(1f)
+        val widthPx = constraints.maxWidth.toFloat().coerceAtLeast(1f)
 
+        // velocity > 0 means a rightward fling (opening), < 0 leftward (closing).
         fun settle(velocity: Float) {
             val target = when {
-                velocity < -900f -> 1f
-                velocity > 900f -> 0f
-                drawer > 0.5f -> 1f
+                velocity > 700f -> 1f
+                velocity < -700f -> 0f
+                drawer > 0.4f -> 1f
                 else -> 0f
             }
             settleJob?.cancel()
             settleJob = scope.launch {
-                animate(drawer, target, initialVelocity = -velocity / heightPx, animationSpec = spring(dampingRatio = 0.86f, stiffness = 360f)) { v, _ ->
+                animate(drawer, target, initialVelocity = velocity / widthPx, animationSpec = spring(dampingRatio = 0.88f, stiffness = 420f)) { v, _ ->
                     drawer = v
                 }
                 if (target == 0f) {
@@ -140,63 +93,33 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
             }
         }
 
-        fun dragBy(dy: Float) {
+        fun dragBy(dx: Float) {
             settleJob?.cancel()
-            drawer = (drawer - dy / (heightPx * 0.55f)).coerceIn(0f, 1f)
+            drawer = (drawer + dx / (widthPx * 0.85f)).coerceIn(0f, 1f)
         }
 
         fun openDrawer(focusSearch: Boolean = false) {
-            settle(-3000f)
+            settle(3000f)
             if (focusSearch) focusToken++
         }
 
-        fun closeDrawer() = settle(3000f)
+        fun closeDrawer() = settle(-3000f)
 
         LaunchedEffect(Unit) {
             vm.resetToHome.collect {
                 settleJob?.cancel()
                 drawer = 0f
                 query = ""
-                settingsPicker = false
                 focusManager.clearFocus()
             }
         }
 
-        BackHandler(enabled = settingsPicker) { settingsPicker = false }
-        BackHandler(enabled = drawer > 0f && !vm.geminiSheetOpen && !vm.settingsOpen && !settingsPicker) {
+        BackHandler(enabled = drawer > 0f && !vm.geminiSheetOpen && !vm.settingsOpen) {
             if (query.isNotEmpty()) query = "" else closeDrawer()
         }
         BackHandler(enabled = vm.geminiSheetOpen) { vm.geminiSheetOpen = false }
         BackHandler(enabled = vm.settingsOpen) { vm.settingsOpen = false }
 
-        // Drawer pull-down-to-close: the list hands leftover downward scroll to the drawer.
-        val drawerNestedScroll = remember(heightPx) {
-            object : NestedScrollConnection {
-                override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                    if (drawer < 1f && available.y < 0f && source == NestedScrollSource.UserInput) {
-                        dragBy(available.y)
-                        return Offset(0f, available.y)
-                    }
-                    return Offset.Zero
-                }
-
-                override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-                    if (available.y > 0f && source == NestedScrollSource.UserInput) {
-                        dragBy(available.y)
-                        return Offset(0f, available.y)
-                    }
-                    return Offset.Zero
-                }
-
-                override suspend fun onPreFling(available: Velocity): Velocity {
-                    if (drawer < 1f) {
-                        settle(available.y)
-                        return available
-                    }
-                    return Velocity.Zero
-                }
-            }
-        }
         val dragState = rememberDraggableState { dragBy(it) }
 
         // ---- Background --------------------------------------------------------------------
@@ -219,10 +142,6 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
                     openGeminiSheet = { vm.geminiSheetOpen = true },
                     openGeminiApp = { vm.openGeminiApp() },
                     geminiVoice = { vm.geminiVoice() },
-                    callContact = { pickContact(forMessage = false) },
-                    sendMessage = { pickContact(forMessage = true) },
-                    changeSetting = { settingsPicker = true },
-                    openAppSearch = { openDrawer(focusSearch = true) },
                     openClock = { ActivityBridge.start(context, DockResolver.clockIntent()) },
                     openCalendar = {
                         val uri = ContentUris.appendId(CalendarContract.CONTENT_URI.buildUpon().appendPath("time"), System.currentTimeMillis()).build()
@@ -238,12 +157,15 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
                 ),
                 modifier = Modifier
                     .graphicsLayer {
-                        alpha = (1f - drawer * 1.6f).coerceIn(0f, 1f)
-                        translationY = -drawer * 160f
-                        val s = 1f - 0.05f * drawer
+                        alpha = (1f - drawer * 2.2f).coerceIn(0f, 1f)
+                        translationX = drawer * widthPx * 0.25f
+                        val s = 1f - 0.06f * drawer
                         scaleX = s; scaleY = s
                     }
-                    .draggable(dragState, Orientation.Vertical, onDragStopped = { v -> settle(v) }),
+                    // Lets a swipe that starts right at the left edge reach AURA instead of
+                    // the system back gesture (Android caps this at 200dp per edge).
+                    .leftEdgeGestureZone()
+                    .draggable(dragState, Orientation.Horizontal, onDragStopped = { v -> settle(v) }),
             )
         }
 
@@ -258,7 +180,6 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
                 query = query,
                 onQueryChange = { query = it },
                 focusSearchToken = focusToken,
-                nestedScrollConnection = drawerNestedScroll,
                 actions = DrawerActions(
                     launch = vm::launch,
                     appInfo = vm.repo::openAppInfo,
@@ -278,21 +199,14 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
                 ),
                 modifier = Modifier
                     .graphicsLayer {
-                        alpha = drawer
-                        translationY = (1f - drawer) * heightPx * 0.16f
+                        alpha = (drawer * 1.5f).coerceIn(0f, 1f)
+                        translationX = -(1f - drawer) * widthPx
                     }
-                    .draggable(dragState, Orientation.Vertical, onDragStopped = { v -> settle(v) }),
+                    .draggable(dragState, Orientation.Horizontal, onDragStopped = { v -> settle(v) }),
             )
         }
 
         // ---- Overlays ----------------------------------------------------------------------
-        AnimatedVisibility(settingsPicker, enter = fadeIn(), exit = fadeOut()) {
-            SettingsPicker(
-                onPick = { settingsPicker = false; ActivityBridge.start(context, SettingShortcuts.intentFor(it)) },
-                onDismiss = { settingsPicker = false },
-            )
-        }
-
         AnimatedVisibility(
             vm.geminiSheetOpen,
             enter = fadeIn() + slideInVertically { it / 3 },
@@ -318,37 +232,15 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
     }
 }
 
+/** Excludes a 200dp band on the left edge, centered vertically, from the system back gesture. */
 @Composable
-private fun SettingsPicker(onPick: (SettingShortcut) -> Unit, onDismiss: () -> Unit) {
-    val ids = listOf("internet", "bluetooth", "volume", "display", "battery", "dnd", "nfc", "location", "wallpaper", "all")
-    val shortcuts = ids.mapNotNull { SettingShortcuts.byId(it) }
-    Box(Modifier.fillMaxSize()) {
-        Box(
-            Modifier.fillMaxSize().background(Color(0x99100E0C))
-                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onDismiss)
-        )
-        Column(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding()
-                .padding(16.dp).glass(RoundedCornerShape(32.dp), fill = Color(0xEB2A2724)).padding(18.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                AuraGlyph(Glyph.Gear, size = 22.dp)
-                Spacer(Modifier.width(12.dp))
-                Text("Change a setting", color = Aura.Ink, fontSize = 19.sp, fontFamily = Aura.Sans)
-            }
-            Spacer(Modifier.height(14.dp))
-            shortcuts.chunked(2).forEach { pair ->
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(bottom = 10.dp)) {
-                    pair.forEach { s ->
-                        Text(
-                            s.title, color = Aura.Ink, fontSize = 15.sp, fontFamily = Aura.Sans, maxLines = 1,
-                            modifier = Modifier.weight(1f).glass(RoundedCornerShape(22.dp)).clickable { onPick(s) }
-                                .padding(horizontal = 18.dp, vertical = 14.dp),
-                        )
-                    }
-                    if (pair.size == 1) Spacer(Modifier.weight(1f))
-                }
-            }
-        }
+private fun Modifier.leftEdgeGestureZone(): Modifier {
+    val density = LocalDensity.current
+    val band = with(density) { 200.dp.toPx() }
+    val edge = with(density) { 32.dp.toPx() }
+    return systemGestureExclusion { coords ->
+        val h = coords.size.height.toFloat()
+        val top = ((h - band) / 2f).coerceAtLeast(0f)
+        Rect(0f, top, edge, top + band)
     }
 }
