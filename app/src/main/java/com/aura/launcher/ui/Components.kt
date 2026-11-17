@@ -37,7 +37,6 @@ import androidx.compose.ui.unit.sp
 import com.aura.launcher.data.AppEntry
 import com.aura.launcher.data.AppRepository
 import com.aura.launcher.data.DockItem
-import com.aura.launcher.gemini.GeminiBridge
 import com.aura.launcher.ui.theme.Aura
 
 @Composable
@@ -79,7 +78,7 @@ fun AuraTopBar(repo: AppRepository, onGoogle: () -> Unit, onLongPressLabel: () -
             Modifier.size(36.dp).clip(CircleShape).clickable(onClickLabel = "Google search", role = Role.Button, onClick = onGoogle),
             contentAlignment = Alignment.Center,
         ) {
-            PackageIcon(GeminiBridge.GOOGLE_PACKAGE, repo, 28.dp)
+            PackageIcon(com.aura.launcher.data.DockResolver.GOOGLE_PACKAGE, repo, 28.dp)
         }
     }
 }

@@ -1,12 +1,14 @@
 package com.aura.launcher
 
 import android.content.Intent
+import android.content.IntentSender
 import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import com.aura.launcher.ui.AuraRoot
@@ -21,6 +23,12 @@ class MainActivity : ComponentActivity() {
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             pendingPermission?.complete(granted)
             pendingPermission = null
+        }
+    private var pendingIntentSender: CompletableDeferred<Intent?>? = null
+    private val intentSenderLauncher =
+        registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+            pendingIntentSender?.complete(if (result.resultCode == RESULT_OK) result.data else null)
+            pendingIntentSender = null
         }
     private val multiPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
@@ -61,6 +69,15 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         ActivityBridge.detach(this)
         super.onDestroy()
+    }
+
+    /** Runs a Google Play services resolution (account picker / consent) and returns its result data. */
+    suspend fun resolveIntentSender(sender: IntentSender): Intent? {
+        pendingIntentSender?.complete(null)
+        val deferred = CompletableDeferred<Intent?>()
+        pendingIntentSender = deferred
+        intentSenderLauncher.launch(IntentSenderRequest.Builder(sender).build())
+        return deferred.await()
     }
 
     suspend fun requestPermissionAsync(permission: String): Boolean {

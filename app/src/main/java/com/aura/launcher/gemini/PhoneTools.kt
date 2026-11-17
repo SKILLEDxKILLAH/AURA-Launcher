@@ -79,11 +79,6 @@ class PhoneTools(private val context: Context, private val repo: AppRepository) 
         put(fn("open_camera", "Open the camera.", props("mode" to enumStr("Camera mode", listOf("photo", "video"))), "mode"))
         put(fn("open_url", "Open a web page.", props("url" to str("Absolute https URL")), "url"))
         put(fn("get_device_status", "Read battery level, charging state, connectivity, ringer mode and local time.", JSONObject()))
-        put(fn(
-            "ask_gemini_app",
-            "Hand the request to the full Google Gemini app when it needs abilities AURA lacks (reading the screen, email, Google account data, complex multi-app tasks).",
-            props("prompt" to str("The full request to pass along")), "prompt",
-        ))
     }
 
     suspend fun execute(name: String, args: JSONObject): ToolResult = try {
@@ -117,10 +112,6 @@ class PhoneTools(private val context: Context, private val repo: AppRepository) 
                 else start(Intent(Intent.ACTION_VIEW, url.toUri()), "Opened ${url.toUri().host ?: "link"}")
             }
             "get_device_status" -> status()
-            "ask_gemini_app" -> {
-                val ok = GeminiBridge.ask(context, args.optString("prompt"))
-                ToolResult(ok, "Handed off to Gemini app", if (ok) "Gemini app opened with the prompt" else "Gemini app unavailable")
-            }
             else -> ToolResult(false, "Unknown action", "No tool named $name")
         }
     } catch (e: Exception) {

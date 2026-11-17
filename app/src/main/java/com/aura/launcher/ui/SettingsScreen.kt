@@ -20,7 +20,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -40,11 +39,20 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aura.launcher.ActivityBridge
 import com.aura.launcher.data.AuraPrefs
-import com.aura.launcher.data.GeminiEngine
+import com.aura.launcher.data.GeminiAuthMode
+import com.aura.launcher.gemini.GoogleAccountAuth
 import com.aura.launcher.ui.theme.Aura
 
 @Composable
-fun SettingsScreen(prefs: AuraPrefs, requestPermissions: (List<String>) -> Unit, onClose: () -> Unit) {
+fun SettingsScreen(
+    prefs: AuraPrefs,
+    signingIn: Boolean,
+    signInError: String?,
+    onSignIn: () -> Unit,
+    onSignOut: () -> Unit,
+    requestPermissions: (List<String>) -> Unit,
+    onClose: () -> Unit,
+) {
     val context = LocalContext.current
     Column(
         Modifier.fillMaxSize().background(Color(0xF71D1B19)).systemBarsPadding()
@@ -71,51 +79,69 @@ fun SettingsScreen(prefs: AuraPrefs, requestPermissions: (List<String>) -> Unit,
         }
 
         Group("Gemini") {
-            RadioRow(
-                "Google Gemini app",
-                "Prompts and voice go straight to Gemini. Make it your default assistant so it can act on your phone.",
-                prefs.engine == GeminiEngine.GEMINI_APP,
-            ) { prefs.updateEngine(GeminiEngine.GEMINI_APP) }
-            RadioRow(
-                "AURA agent (Gemini API)",
-                "Gemini runs inside AURA and operates the phone with tools: apps, settings, calls, messages, alarms, timers, flashlight, navigation, media, calendar.",
-                prefs.engine == GeminiEngine.AURA_AGENT,
-            ) { prefs.updateEngine(GeminiEngine.AURA_AGENT) }
+            val email = prefs.accountEmail
+            if (prefs.authMode == GeminiAuthMode.GOOGLE_ACCOUNT && email != null) {
+                AccountRow(prefs.accountName ?: "Google account", email, onSignOut)
+            } else if (prefs.authMode == GeminiAuthMode.GOOGLE_ACCOUNT) {
+                ActionRow(
+                    if (signingIn) "Waiting for Google…" else "Sign in with Google",
+                    "Allow AURA to use Gemini with your Google account",
+                    onSignIn,
+                )
+                signInError?.let { Text(it, color = Color(0xFFFFB4A9), fontSize = 13.sp, modifier = Modifier.padding(horizontal = 10.dp)) }
+            }
+            ActionRow("Grant phone permissions", "Contacts, calling, microphone and location for Gemini actions and weather") {
+                requestPermissions(
+                    listOf(
+                        Manifest.permission.READ_CONTACTS, Manifest.permission.CALL_PHONE,
+                        Manifest.permission.RECORD_AUDIO, Manifest.permission.ACCESS_COARSE_LOCATION,
+                    )
+                )
+            }
 
-            if (prefs.engine == GeminiEngine.AURA_AGENT) {
-                var key by remember { mutableStateOf(prefs.apiKey) }
-                var reveal by remember { mutableStateOf(false) }
-                Field(
-                    label = "Gemini API key",
-                    value = key,
-                    onChange = { key = it; prefs.updateApiKey(it) },
-                    transformation = if (reveal) VisualTransformation.None else PasswordVisualTransformation(),
-                )
-                Text(
-                    if (reveal) "Hide key" else "Show key", color = Aura.GeminiViolet, fontSize = 13.sp,
-                    modifier = Modifier.padding(start = 6.dp, bottom = 6.dp).clickable { reveal = !reveal },
-                )
+            var advanced by remember { mutableStateOf(prefs.authMode == GeminiAuthMode.API_KEY) }
+            ActionRow("Advanced", if (advanced) "Hide model and API key options" else "Model, API key instead of Google sign-in") { advanced = !advanced }
+            if (advanced) {
                 var model by remember { mutableStateOf(prefs.model) }
                 Field("Model", model, { model = it; prefs.updateModel(it) })
-                Text(
-                    "Get a key at aistudio.google.com. It stays on this device and is sent only to Google's Gemini API.",
-                    color = Aura.InkFaint, fontSize = 12.sp, modifier = Modifier.padding(6.dp),
-                )
-            }
-
-            ActionRow("Make Gemini your default assistant", "Lets Gemini read the screen and control apps system‑wide") {
-                ActivityBridge.start(context, Intent(Settings.ACTION_VOICE_INPUT_SETTINGS))
-            }
-            ActionRow("Grant phone permissions", "Contacts, calling and location for Gemini actions and weather") {
-                requestPermissions(
-                    listOf(Manifest.permission.READ_CONTACTS, Manifest.permission.CALL_PHONE, Manifest.permission.ACCESS_COARSE_LOCATION)
-                )
+                ToggleRow(
+                    "Use an API key instead",
+                    "Skip Google sign-in and authenticate with an AI Studio key",
+                    prefs.authMode == GeminiAuthMode.API_KEY,
+                ) { prefs.updateAuthMode(if (it) GeminiAuthMode.API_KEY else GeminiAuthMode.GOOGLE_ACCOUNT) }
+                if (prefs.authMode == GeminiAuthMode.API_KEY) {
+                    var key by remember { mutableStateOf(prefs.apiKey) }
+                    var reveal by remember { mutableStateOf(false) }
+                    Field(
+                        label = "Gemini API key",
+                        value = key,
+                        onChange = { key = it; prefs.updateApiKey(it) },
+                        transformation = if (reveal) VisualTransformation.None else PasswordVisualTransformation(),
+                    )
+                    Text(
+                        if (reveal) "Hide key" else "Show key", color = Aura.GeminiViolet, fontSize = 13.sp,
+                        modifier = Modifier.padding(start = 6.dp, bottom = 6.dp).clickable { reveal = !reveal },
+                    )
+                }
             }
         }
 
+        Group("Google setup (one time, for the developer)") {
+            val sha1 = remember { GoogleAccountAuth.signingSha1(context) }
+            Text(
+                "Google sign-in needs an Android OAuth client in your Google Cloud project:\n" +
+                    "1. Enable “Generative Language API”.\n" +
+                    "2. Google Auth Platform → Audience: External, Testing; add your Gmail under Test users.\n" +
+                    "3. Clients → Create → Android, with the values below.",
+                color = Aura.InkDim, fontSize = 13.sp, modifier = Modifier.padding(6.dp),
+            )
+            CopyRow("Package name", context.packageName)
+            CopyRow("SHA-1 certificate fingerprint", sha1)
+        }
+
         Group("About") {
-            Text("AURA Launcher 1.1 · Built for Android 17", color = Aura.InkDim, fontSize = 14.sp, modifier = Modifier.padding(6.dp))
-            Text("Tips: swipe up for apps · drag the letters on the right · long-press the Gemini card for the full Gemini app · long-press “Android 17” for these settings.",
+            Text("AURA Launcher 1.2 · Built for Android 17", color = Aura.InkDim, fontSize = 14.sp, modifier = Modifier.padding(6.dp))
+            Text("Tips: swipe right for apps · drag the letters on the right · tap the mic to talk to Gemini · long-press “Android 17” for these settings.",
                 color = Aura.InkFaint, fontSize = 13.sp, modifier = Modifier.padding(6.dp))
         }
         Spacer(Modifier.height(40.dp))
@@ -147,21 +173,6 @@ private fun ToggleRow(title: String, subtitle: String?, checked: Boolean, onChan
 }
 
 @Composable
-private fun RadioRow(title: String, subtitle: String, selected: Boolean, onClick: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick).padding(10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        RadioButton(selected = selected, onClick = onClick)
-        Spacer(Modifier.width(6.dp))
-        Column(Modifier.weight(1f)) {
-            Text(title, color = Aura.Ink, fontSize = 16.sp, fontFamily = Aura.Sans)
-            Text(subtitle, color = Aura.InkDim, fontSize = 13.sp)
-        }
-    }
-}
-
-@Composable
 private fun ActionRow(title: String, subtitle: String, onClick: () -> Unit) {
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick).padding(10.dp)) {
         Text(title, color = Aura.Ink, fontSize = 16.sp, fontFamily = Aura.Sans)
@@ -185,4 +196,32 @@ private fun Field(label: String, value: String, onChange: (String) -> Unit, tran
         ),
         modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp),
     )
+}
+
+@Composable
+private fun AccountRow(name: String, email: String, onSignOut: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(name, color = Aura.Ink, fontSize = 16.sp, fontFamily = Aura.Sans)
+            Text("Gemini is signed in as $email", color = Aura.InkDim, fontSize = 13.sp)
+        }
+        Text(
+            "Sign out", color = Aura.GeminiViolet, fontSize = 14.sp,
+            modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onSignOut).padding(10.dp),
+        )
+    }
+}
+
+@Composable
+private fun CopyRow(label: String, value: String) {
+    val clipboard = LocalContext.current.getSystemService(android.content.ClipboardManager::class.java)
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+            .clickable { clipboard?.setPrimaryClip(android.content.ClipData.newPlainText(label, value)) }
+            .padding(10.dp)
+    ) {
+        Text(label, color = Aura.InkDim, fontSize = 12.sp)
+        Text(value, color = Aura.Ink, fontSize = 14.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+        Text("Tap to copy", color = Aura.InkFaint, fontSize = 11.sp)
+    }
 }

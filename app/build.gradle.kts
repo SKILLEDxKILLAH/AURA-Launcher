@@ -12,18 +12,35 @@ android {
         // AURA targets Android 17 (API 37) exclusively.
         minSdk = 37
         targetSdk = 37
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.2.0"
     }
 
+    // One stable signing key for debug and release builds. Google sign-in (OAuth) is registered
+    // against this key's SHA-1, and it lets new builds install over earlier ones.
+    // The keystore is not committed; without it, builds fall back to the local debug key.
+    val auraKeystore = rootProject.file("keystore/aura-signing.keystore")
+    signingConfigs {
+        if (auraKeystore.exists()) {
+            create("aura") {
+                storeFile = auraKeystore
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
+    }
+    val auraSigning = signingConfigs.findByName("aura") ?: signingConfigs.getByName("debug")
+
     buildTypes {
+        debug {
+            signingConfig = auraSigning
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Signed with the debug key so the release APK is sideloadable out of the box.
-            // Replace with your own signing config before publishing.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = auraSigning
         }
     }
 
@@ -49,6 +66,9 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
+
+    // Google sign-in + OAuth authorization (Gemini API access with the user's Google account)
+    implementation("com.google.android.gms:play-services-auth:22.0.0")
 
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")

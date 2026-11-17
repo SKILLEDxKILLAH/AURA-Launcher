@@ -7,7 +7,8 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.edit
 import java.util.Locale
 
-enum class GeminiEngine { GEMINI_APP, AURA_AGENT }
+/** How AURA authenticates to Gemini. Both run Gemini inside the launcher. */
+enum class GeminiAuthMode { GOOGLE_ACCOUNT, API_KEY }
 
 /** Small observable preference store. Every property is Compose state, so UI recomposes on change. */
 class AuraPrefs(context: Context) {
@@ -21,9 +22,13 @@ class AuraPrefs(context: Context) {
         sp.getBoolean(K_FAHRENHEIT, Locale.getDefault().country in setOf("US", "LR", "MM", "BS", "BZ", "KY", "PW"))
     )
         private set
-    var engine by mutableStateOf(
-        runCatching { GeminiEngine.valueOf(sp.getString(K_ENGINE, null) ?: "") }.getOrDefault(GeminiEngine.GEMINI_APP)
+    var authMode by mutableStateOf(
+        runCatching { GeminiAuthMode.valueOf(sp.getString(K_AUTH_MODE, null) ?: "") }.getOrDefault(GeminiAuthMode.GOOGLE_ACCOUNT)
     )
+        private set
+    var accountEmail by mutableStateOf(sp.getString(K_ACCOUNT_EMAIL, null))
+        private set
+    var accountName by mutableStateOf(sp.getString(K_ACCOUNT_NAME, null))
         private set
     var apiKey by mutableStateOf(sp.getString(K_API_KEY, "") ?: "")
         private set
@@ -35,11 +40,17 @@ class AuraPrefs(context: Context) {
     fun updateUseAuraBackdrop(v: Boolean) { useAuraBackdrop = v; sp.edit { putBoolean(K_BACKDROP, v) } }
     fun updateShowWeather(v: Boolean) { showWeather = v; sp.edit { putBoolean(K_WEATHER, v) } }
     fun updateFahrenheit(v: Boolean) { fahrenheit = v; sp.edit { putBoolean(K_FAHRENHEIT, v) } }
-    fun updateEngine(v: GeminiEngine) { engine = v; sp.edit { putString(K_ENGINE, v.name) } }
+    fun updateAuthMode(v: GeminiAuthMode) { authMode = v; sp.edit { putString(K_AUTH_MODE, v.name) } }
     fun updateApiKey(v: String) { apiKey = v.trim(); sp.edit { putString(K_API_KEY, apiKey) } }
     fun updateModel(v: String) {
         model = v.trim().ifEmpty { DEFAULT_MODEL }
         sp.edit { putString(K_MODEL, model) }
+    }
+
+    fun updateAccount(email: String?, name: String?) {
+        accountEmail = email
+        accountName = name
+        sp.edit { putString(K_ACCOUNT_EMAIL, email); putString(K_ACCOUNT_NAME, name) }
     }
 
     fun toggleFavorite(key: String) {
@@ -47,15 +58,21 @@ class AuraPrefs(context: Context) {
         sp.edit { putStringSet(K_FAVORITES, favorites) }
     }
 
-    /** The in-launcher agent is usable only when the user chose it and supplied a key. */
-    val agentReady: Boolean get() = engine == GeminiEngine.AURA_AGENT && apiKey.isNotBlank()
+    /** True when Gemini can run right now without asking the user for anything. */
+    val geminiReady: Boolean
+        get() = when (authMode) {
+            GeminiAuthMode.GOOGLE_ACCOUNT -> accountEmail != null
+            GeminiAuthMode.API_KEY -> apiKey.isNotBlank()
+        }
 
     companion object {
         const val DEFAULT_MODEL = "gemini-flash-latest"
         private const val K_BACKDROP = "aura_backdrop"
         private const val K_WEATHER = "show_weather"
         private const val K_FAHRENHEIT = "fahrenheit"
-        private const val K_ENGINE = "gemini_engine"
+        private const val K_AUTH_MODE = "gemini_auth_mode"
+        private const val K_ACCOUNT_EMAIL = "google_account_email"
+        private const val K_ACCOUNT_NAME = "google_account_name"
         private const val K_API_KEY = "gemini_api_key"
         private const val K_MODEL = "gemini_model"
         private const val K_FAVORITES = "favorites"

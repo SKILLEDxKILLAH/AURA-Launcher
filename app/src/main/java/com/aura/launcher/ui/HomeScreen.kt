@@ -37,7 +37,7 @@ import java.util.Locale
 
 data class HomeActions(
     val openGeminiSheet: () -> Unit,
-    val openGeminiApp: () -> Unit,
+    val geminiLongPress: () -> Unit,
     val geminiVoice: () -> Unit,
     val openClock: () -> Unit,
     val openCalendar: () -> Unit,
@@ -72,7 +72,7 @@ fun HomeScreen(
 
         GeminiCard(
             onOpen = actions.openGeminiSheet,
-            onLongPress = actions.openGeminiApp,
+            onLongPress = actions.geminiLongPress,
             onMic = actions.geminiVoice,
             modifier = Modifier.padding(horizontal = 16.dp),
         )

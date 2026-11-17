@@ -114,6 +114,50 @@ class ScreenshotTest {
         save("swipe_open")
     }
 
+    @Test
+    fun geminiSignIn() {
+        compose.setContent {
+            AuraTheme {
+                Box(Modifier.fillMaxSize()) {
+                    AuraBackdrop()
+                    com.aura.launcher.ui.GeminiSheet(
+                        state = com.aura.launcher.ui.GeminiSheetState(
+                            chat = emptyList(), busy = false, needsSignIn = true, signingIn = false, signInError = null,
+                            accountLabel = null, model = "gemini-flash-latest", listenRequest = 0,
+                        ),
+                        onSend = {}, onSignIn = {}, onClear = {}, onOpenSettings = {}, onDismiss = {},
+                    )
+                }
+            }
+        }
+        save("gemini_signin")
+    }
+
+    @Test
+    fun geminiChat() {
+        compose.setContent {
+            AuraTheme {
+                Box(Modifier.fillMaxSize()) {
+                    AuraBackdrop()
+                    com.aura.launcher.ui.GeminiSheet(
+                        state = com.aura.launcher.ui.GeminiSheetState(
+                            chat = listOf(
+                                ChatItem(ChatRole.USER, "Turn on the flashlight and set a timer for 10 minutes"),
+                                ChatItem(ChatRole.ACTION, "Flashlight on"),
+                                ChatItem(ChatRole.ACTION, "Timer started · 10m"),
+                                ChatItem(ChatRole.GEMINI, "Done — flashlight's on and your 10-minute timer is running."),
+                            ),
+                            busy = false, needsSignIn = false, signingIn = false, signInError = null,
+                            accountLabel = "you@gmail.com", model = "gemini-flash-latest", listenRequest = 0,
+                        ),
+                        onSend = {}, onSignIn = {}, onClear = {}, onOpenSettings = {}, onDismiss = {},
+                    )
+                }
+            }
+        }
+        save("gemini_chat")
+    }
+
     private fun renderDrawer() {
         val repo = AppRepository(context)
         compose.setContent {

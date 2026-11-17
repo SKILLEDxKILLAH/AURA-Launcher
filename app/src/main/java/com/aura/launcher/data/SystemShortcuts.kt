@@ -52,6 +52,8 @@ object SettingShortcuts {
 data class DockItem(val label: String, val packageName: String, val intent: Intent)
 
 object DockResolver {
+    const val GOOGLE_PACKAGE = "com.google.android.googlequicksearchbox"
+
     fun resolve(context: Context): List<DockItem> {
         val pm = context.packageManager
         fun pkgFor(intent: Intent): String? =

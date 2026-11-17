@@ -16,27 +16,43 @@ A minimalist home screen for **Android 17**, with Google Gemini built into the h
 - A Gemini card above the dock, with nothing else in the way.
 - A dock with your real default Phone, Messages, Browser, Photos and Camera apps.
 
-### Gemini on the home screen
-AURA gives you two ways to use Gemini (choose one in **Settings → Gemini**):
+### Gemini, built into the launcher
+Gemini runs **inside AURA**. It never opens the Gemini app. Tap the Gemini card, the bar or the sparkle button, or ask from drawer search.
 
-1. **Google Gemini app** (default). Typed prompts, voice and the sparkle button all go straight to the system Gemini app. If you make Gemini your default digital assistant (there's a shortcut in settings), it can read your screen and control apps across the whole phone.
-2. **AURA agent (Gemini API)**. Gemini runs inside the launcher and uses *function calling* to operate the phone directly:
-   | Tool | What it does |
-   |---|---|
-   | `open_app` | Opens any installed app, matched loosely by name |
-   | `open_settings` | Opens Wi‑Fi, Bluetooth, volume, display, battery, NFC, DND, location and more (uses quick panels where available) |
-   | `call_contact` | Looks up a contact and places the call (asks for the `CALL_PHONE` permission the first time) |
-   | `send_message` | Opens a pre-filled SMS/RCS message. **You tap send** |
-   | `set_alarm` / `set_timer` | Sets an alarm or timer silently in your clock app |
-   | `set_flashlight` | Turns the torch on or off |
-   | `navigate` | Starts turn‑by‑turn navigation |
-   | `play_media` | Plays something by search in your music/video app |
-   | `create_calendar_event` | Opens a pre-filled event draft |
-   | `web_search`, `open_url`, `open_camera` | What they say |
-   | `get_device_status` | Reads battery, charging, network, ringer and time |
-   | `ask_gemini_app` | Hands harder requests to the full Gemini app |
+- **First use:** tap **Continue with Google**, pick your account and allow access. That's the only setup on the phone. After that, access tokens refresh silently in the background.
+- **Voice:** the mic listens inline with live transcription. It uses on-device speech recognition when available and opens no dialog or other app.
+- **Gemini acts on the phone** through function calling:
 
-   Get an API key at [aistudio.google.com](https://aistudio.google.com) and paste it in settings. The default model is `gemini-flash-latest`, and you can change it. The key is stored only on your device and is sent only to Google's Gemini API.
+  | Tool | What it does |
+  |---|---|
+  | `open_app` | Opens any installed app, matched loosely by name |
+  | `open_settings` | Opens Wi‑Fi, Bluetooth, volume, display, battery, NFC, DND, location and more (uses quick panels where available) |
+  | `call_contact` | Looks up a contact and places the call (asks for the `CALL_PHONE` permission the first time) |
+  | `send_message` | Opens a pre-filled SMS/RCS message. **You tap send** |
+  | `set_alarm` / `set_timer` | Sets an alarm or timer silently in your clock app |
+  | `set_flashlight` | Turns the torch on or off |
+  | `navigate` | Starts turn‑by‑turn navigation |
+  | `play_media` | Plays something by search in your music/video app |
+  | `create_calendar_event` | Opens a pre-filled event draft |
+  | `web_search`, `open_url`, `open_camera` | What they say |
+  | `get_device_status` | Reads battery, charging, network, ringer and time |
+
+#### One-time Google Cloud setup (developer)
+Google sign-in calls the Gemini API with OAuth. The developer registers it once:
+
+1. In [Google Cloud console](https://console.cloud.google.com), create or pick a project and **enable "Generative Language API"**.
+2. Go to **Google Auth Platform → Branding** and fill in an app name and email. Under **Audience**, choose **External**, publishing status **Testing**, and add every Gmail that will sign in under **Test users**.
+3. Go to **Clients → Create client → Android**:
+   - Package name: `com.aura.launcher`
+   - SHA-1: shown in **AURA settings → Google setup** (tap to copy). For builds signed with `keystore/aura-signing.keystore` it is
+     `21:5E:10:55:71:4E:D8:77:73:F0:3C:85:73:0C:10:1A:FE:B4:96:D6`.
+4. On the phone, tap **Continue with Google**. Google shows an "unverified app" notice while the project is in Testing; tap **Continue**.
+
+Requested scopes: `generative-language.retriever` and `cloud-platform` (the pair Google documents for user-credential access to the Gemini API), plus `userinfo.email` to show who is signed in.
+
+> Usage counts against your Cloud project's Gemini API quota (free tier, or billing if enabled). It does **not** use a consumer Gemini / Google One AI subscription, because Google doesn't let third-party apps use those.
+
+**Advanced:** under Settings → Gemini → Advanced you can change the model (default `gemini-flash-latest`) or use an AI Studio API key instead of signing in.
 
 ### App drawer
 - Swipe right from the left side of the screen; the drawer slides in from the left.
@@ -56,16 +72,14 @@ AURA gives you two ways to use Gemini (choose one in **Settings → Gemini**):
 |---|---|
 | Swipe right from the left side | Open the app drawer |
 | Swipe left / Back | Close the drawer |
-| Tap the Gemini card | Open the Gemini panel |
-| Long-press the Gemini card | Open the full Gemini app |
-| Mic button | Talk to Gemini |
-| Sparkle button in the drawer | Gemini overlay (long-press for voice) |
+| Tap the Gemini card / bar / sparkle | Open the Gemini panel |
+| Mic button or long-press the card | Talk to Gemini |
 | Long-press "Android 17" | AURA settings |
 | Tap the clock / date / weather | Clock / Calendar / Weather |
 
 ## Requirements
 - **Android 17 (API 37) only.** `minSdk` and `targetSdk` are both 37.
-- For the best Gemini experience, install the Google Gemini app and set it as your default assistant.
+- Google Play services (for Google sign-in).
 
 ## Build
 
@@ -78,19 +92,19 @@ AURA gives you two ways to use Gemini (choose one in **Settings → Gemini**):
 
 Install it with `adb install app/build/outputs/apk/debug/app-debug.apk`. Then press Home and pick **AURA**, or use **Settings → Set AURA as your home app**.
 
-> Before publishing anywhere, replace the debug signing config in `app/build.gradle.kts` with your own keystore.
+> Builds are signed with `keystore/aura-signing.keystore` when present (kept out of git, so back it up). Google sign-in is registered against its SHA-1, and it lets new builds install over old ones. Without it, Gradle falls back to your local debug key, and you'd need to register that SHA-1 too.
 
 ## Tech
-Kotlin with Jetpack Compose and Material 3, AGP 9.5 and Gradle 9.9. There are no third-party runtime dependencies: Gemini and Open‑Meteo are called with the platform `HttpURLConnection` and `org.json`. Apps are loaded through `LauncherApps`, so live package changes and work profiles are handled the same way the system launcher handles them.
+Kotlin with Jetpack Compose and Material 3, AGP 9.5 and Gradle 9.9. There are no third-party runtime dependencies: Gemini and Open‑Meteo are called with the platform `HttpURLConnection` and `org.json`. Google sign-in uses Play services' `AuthorizationClient`. Apps are loaded through `LauncherApps`, so live package changes and work profiles are handled the same way the system launcher handles them.
 
 ```
 app/src/main/java/com/aura/launcher/
 ├── MainActivity.kt, MainViewModel.kt, ActivityBridge.kt
 ├── data/      AppRepository (LauncherApps), AuraPrefs, Weather, settings & dock shortcuts
-├── gemini/    GeminiBridge (system Gemini hand-off), AuraAgent (function-calling loop), PhoneTools
+├── gemini/    GoogleAccountAuth (sign-in + tokens), AuraAgent (function-calling loop), PhoneTools
 └── ui/        AuraRoot, HomeScreen, Drawer, AlphabetArc, GeminiSheet, SettingsScreen, Backdrop, Icons, Glass
 ```
 
 ## Privacy
-- Nothing leaves the device unless you use the AURA agent (your prompt, installed app names and tool results go to Google's Gemini API) or weather (your coarse coordinates go to Open‑Meteo).
+- Nothing leaves the device unless you use Gemini (your prompt, installed app names and tool results go to Google's Gemini API, authorized by your Google sign-in) or weather (your coarse coordinates go to Open‑Meteo). Sign out in settings to revoke AURA's access.
 - Calls need a runtime permission you grant. Messages and calendar events open as drafts for you to confirm.

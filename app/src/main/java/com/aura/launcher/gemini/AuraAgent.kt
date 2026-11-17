@@ -16,6 +16,16 @@ import java.time.format.DateTimeFormatter
  * In-launcher Gemini agent. Talks to the Gemini API with function calling and executes the
  * returned calls through [PhoneTools], so Gemini can operate the phone directly from AURA.
  */
+/** How a Gemini API request is authenticated. */
+sealed interface GeminiCredential {
+    data class ApiKey(val key: String) : GeminiCredential
+
+    /** Google-account OAuth; [token] returns a fresh access token, refreshing when asked. */
+    class GoogleAccount(val token: suspend (forceRefresh: Boolean) -> String) : GeminiCredential
+}
+
+private class HttpStatusException(val code: Int, message: String) : IOException(message)
+
 class AuraAgent(private val tools: PhoneTools) {
 
     sealed interface Event {
@@ -31,7 +41,7 @@ class AuraAgent(private val tools: PhoneTools) {
 
     suspend fun send(
         prompt: String,
-        apiKey: String,
+        credential: GeminiCredential,
         model: String,
         appNames: List<String>,
         onEvent: suspend (Event) -> Unit,
@@ -40,7 +50,7 @@ class AuraAgent(private val tools: PhoneTools) {
         trimHistory()
 
         repeat(MAX_STEPS) {
-            val response = withContext(Dispatchers.IO) { generate(apiKey, model, appNames) }
+            val response = generateAuthorized(credential, model, appNames)
             val content = response.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")
                 ?: throw IOException(blockReason(response))
             if (!content.has("role")) content.put("role", "model")
@@ -71,7 +81,23 @@ class AuraAgent(private val tools: PhoneTools) {
         }
     }
 
-    private fun generate(apiKey: String, model: String, appNames: List<String>): JSONObject {
+    private suspend fun generateAuthorized(credential: GeminiCredential, model: String, appNames: List<String>): JSONObject =
+        when (credential) {
+            is GeminiCredential.ApiKey -> withContext(Dispatchers.IO) { generate("x-goog-api-key", credential.key, model, appNames) }
+            is GeminiCredential.GoogleAccount -> {
+                val token = credential.token(false)
+                try {
+                    withContext(Dispatchers.IO) { generate("Authorization", "Bearer $token", model, appNames) }
+                } catch (e: HttpStatusException) {
+                    if (e.code != 401) throw e
+                    // Token expired or was revoked: refresh silently and retry once.
+                    val fresh = credential.token(true)
+                    withContext(Dispatchers.IO) { generate("Authorization", "Bearer $fresh", model, appNames) }
+                }
+            }
+        }
+
+    private fun generate(authHeader: String, authValue: String, model: String, appNames: List<String>): JSONObject {
         val body = JSONObject()
             .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", systemPrompt(appNames)))))
             .put("contents", history)
@@ -85,7 +111,7 @@ class AuraAgent(private val tools: PhoneTools) {
             connectTimeout = 15_000
             readTimeout = 60_000
             setRequestProperty("Content-Type", "application/json; charset=utf-8")
-            setRequestProperty("x-goog-api-key", apiKey)
+            setRequestProperty(authHeader, authValue)
         }
         try {
             conn.outputStream.use { it.write(body.toString().toByteArray()) }
@@ -94,12 +120,21 @@ class AuraAgent(private val tools: PhoneTools) {
             val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
             if (code !in 200..299) {
                 val msg = runCatching { JSONObject(text).getJSONObject("error").getString("message") }.getOrNull()
-                throw IOException("Gemini API $code: ${msg ?: text.take(200)}")
+                throw HttpStatusException(code, friendlyError(code, msg ?: text.take(200)))
             }
             return JSONObject(text)
         } finally {
             conn.disconnect()
         }
+    }
+
+    private fun friendlyError(code: Int, msg: String): String = when {
+        code == 401 -> "Your Google sign-in expired — sign in again"
+        code == 403 && (msg.contains("SERVICE_DISABLED", true) || msg.contains("has not been used in project", true)) ->
+            "The Gemini API isn't enabled in your Google Cloud project yet. Enable “Generative Language API”, then try again."
+        code == 403 && msg.contains("scope", true) -> "Google didn't grant Gemini access. Sign out and sign in again in AURA settings."
+        code == 429 -> "Gemini is busy or your quota is used up — try again in a moment"
+        else -> "Gemini error $code: $msg"
     }
 
     private fun systemPrompt(appNames: List<String>): String {
@@ -111,7 +146,7 @@ class AuraAgent(private val tools: PhoneTools) {
             - Reply in one short, warm sentence after acting. No markdown.
             - Opening another app moves AURA to the background, so perform at most one app-opening action per request and do it last; flashlight, alarms and timers can come first.
             - Calls and messages go to real people: only call or text when the user clearly asked to.
-            - For requests that need the screen, email, Google account data or anything the tools can't do, use ask_gemini_app.
+            - If a request needs something the tools can't do, answer it directly and briefly instead.
             - Current local time: $now.
             Installed apps: ${appNames.joinToString(", ").take(4000)}
         """.trimIndent()

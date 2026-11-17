@@ -90,7 +90,7 @@ data class DrawerActions(
     val askGemini: (String) -> Unit,
     val webSearch: (String) -> Unit,
     val openGeminiSheet: () -> Unit,
-    val openGeminiApp: () -> Unit,
+    val geminiLongPress: () -> Unit,
     val geminiVoice: () -> Unit,
     val openGoogle: () -> Unit,
     val openSettings: () -> Unit,
@@ -226,7 +226,7 @@ fun AppDrawer(
                             SearchResults(query, repo, favoriteKeys, actions)
                         }
                         SparkleFab(
-                            onClick = actions.openGeminiApp,
+                            onClick = actions.geminiLongPress,
                             onLongClick = actions.geminiVoice,
                             modifier = Modifier.align(Alignment.BottomEnd).padding(end = 2.dp, bottom = 10.dp),
                         )

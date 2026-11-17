@@ -43,7 +43,6 @@ import com.aura.launcher.ActivityBridge
 import com.aura.launcher.MainViewModel
 import com.aura.launcher.data.DockResolver
 import com.aura.launcher.data.SettingShortcuts
-import com.aura.launcher.gemini.GeminiBridge
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -128,7 +127,7 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
 
         // ---- Home --------------------------------------------------------------------------
         val openGoogle = {
-            val launch = context.packageManager.getLaunchIntentForPackage(GeminiBridge.GOOGLE_PACKAGE)
+            val launch = context.packageManager.getLaunchIntentForPackage(com.aura.launcher.data.DockResolver.GOOGLE_PACKAGE)
             if (launch == null || !ActivityBridge.start(context, launch)) openDrawer(focusSearch = true)
         }
         if (drawer < 0.999f) {
@@ -139,9 +138,9 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
                 showWeather = prefs.showWeather,
                 weatherNeedsPermission = vm.weatherNeedsPermission,
                 actions = HomeActions(
-                    openGeminiSheet = { vm.geminiSheetOpen = true },
-                    openGeminiApp = { vm.openGeminiApp() },
-                    geminiVoice = { vm.geminiVoice() },
+                    openGeminiSheet = { vm.openGemini() },
+                    geminiLongPress = { vm.openGemini(listen = true) },
+                    geminiVoice = { vm.openGemini(listen = true) },
                     openClock = { ActivityBridge.start(context, DockResolver.clockIntent()) },
                     openCalendar = {
                         val uri = ContentUris.appendId(CalendarContract.CONTENT_URI.buildUpon().appendPath("time"), System.currentTimeMillis()).build()
@@ -190,9 +189,9 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
                     webSearch = { q ->
                         ActivityBridge.start(context, Intent(Intent.ACTION_WEB_SEARCH).putExtra(android.app.SearchManager.QUERY, q))
                     },
-                    openGeminiSheet = { vm.geminiSheetOpen = true },
-                    openGeminiApp = { vm.openGeminiApp() },
-                    geminiVoice = { vm.geminiVoice() },
+                    openGeminiSheet = { vm.openGemini() },
+                    geminiLongPress = { vm.openGemini(listen = true) },
+                    geminiVoice = { vm.openGemini(listen = true) },
                     openGoogle = openGoogle,
                     openSettings = { vm.settingsOpen = true },
                     launchDock = vm::launchDock,
@@ -213,21 +212,33 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
             exit = fadeOut() + slideOutVertically { it / 3 },
         ) {
             GeminiSheet(
-                chat = vm.chat,
-                busy = vm.agentBusy,
-                agentReady = prefs.agentReady,
-                model = prefs.model,
+                state = GeminiSheetState(
+                    chat = vm.chat,
+                    busy = vm.agentBusy,
+                    needsSignIn = !prefs.geminiReady,
+                    signingIn = vm.signingIn,
+                    signInError = vm.signInError,
+                    accountLabel = if (prefs.authMode == com.aura.launcher.data.GeminiAuthMode.API_KEY) "API key" else prefs.accountEmail,
+                    model = prefs.model,
+                    listenRequest = vm.listenRequest,
+                ),
                 onSend = { vm.ask(it) },
-                onVoice = { vm.geminiVoice() },
-                onOpenGeminiApp = { vm.openGeminiApp() },
+                onSignIn = { vm.signIn() },
                 onClear = { vm.clearChat() },
-                onSetup = { vm.geminiSheetOpen = false; vm.settingsOpen = true },
+                onOpenSettings = { vm.geminiSheetOpen = false; vm.settingsOpen = true },
                 onDismiss = { vm.geminiSheetOpen = false },
             )
         }
 
         AnimatedVisibility(vm.settingsOpen, enter = fadeIn(), exit = fadeOut()) {
-            SettingsScreen(prefs, requestPermissions) { vm.settingsOpen = false }
+            SettingsScreen(
+                prefs = prefs,
+                signingIn = vm.signingIn,
+                signInError = vm.signInError,
+                onSignIn = { vm.signIn() },
+                onSignOut = { vm.signOut() },
+                requestPermissions = requestPermissions,
+            ) { vm.settingsOpen = false }
         }
     }
 }

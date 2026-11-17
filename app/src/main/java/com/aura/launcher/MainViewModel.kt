@@ -12,11 +12,15 @@ import com.aura.launcher.data.AppRepository
 import com.aura.launcher.data.AuraPrefs
 import com.aura.launcher.data.DockItem
 import com.aura.launcher.data.DockResolver
+import com.aura.launcher.data.GeminiAuthMode
 import com.aura.launcher.data.WeatherNow
 import com.aura.launcher.data.WeatherService
 import com.aura.launcher.gemini.AuraAgent
-import com.aura.launcher.gemini.GeminiBridge
+import com.aura.launcher.gemini.GeminiCredential
+import com.aura.launcher.gemini.GoogleAccountAuth
 import com.aura.launcher.gemini.PhoneTools
+import com.aura.launcher.gemini.SignInRequiredException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -33,6 +37,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val repo = AppRepository(app)
     val apps = repo.apps
     val launchCounts = repo.launchCounts
+    val googleAuth = GoogleAccountAuth(app)
 
     var dock by mutableStateOf<List<DockItem>>(emptyList())
         private set
@@ -45,13 +50,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     var geminiSheetOpen by mutableStateOf(false)
     var settingsOpen by mutableStateOf(false)
 
+    /** Incremented to ask the Gemini panel to start listening as soon as it opens. */
+    var listenRequest by mutableStateOf(0)
+        private set
+
     // Gemini conversation
     val chat = mutableStateListOf<ChatItem>()
     var agentBusy by mutableStateOf(false)
         private set
+    var signingIn by mutableStateOf(false)
+        private set
+    var signInError by mutableStateOf<String?>(null)
+        private set
     private val tools = PhoneTools(app, repo)
     private val agent = AuraAgent(tools)
     private var agentJob: Job? = null
+    private var pendingPrompt: String? = null
 
     private val _resetToHome = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val resetToHome: SharedFlow<Unit> = _resetToHome
@@ -99,33 +113,76 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    // ---- Gemini -----------------------------------------------------------------------------
+    // ---- Gemini (runs inside AURA) -------------------------------------------------------------
 
-    fun openGeminiApp() = GeminiBridge.open(context)
-    fun geminiVoice() = GeminiBridge.voice(context)
+    fun openGemini(listen: Boolean = false) {
+        geminiSheetOpen = true
+        if (listen) listenRequest++
+    }
 
-    /** Routes a prompt to the in-launcher agent when configured, otherwise into the Gemini app. */
+    /** Google account picker + consent, then Gemini is ready. Sends any prompt typed before sign-in. */
+    fun signIn() {
+        if (signingIn) return
+        signingIn = true
+        signInError = null
+        viewModelScope.launch {
+            try {
+                val profile = googleAuth.signIn()
+                prefs.updateAuthMode(GeminiAuthMode.GOOGLE_ACCOUNT)
+                prefs.updateAccount(profile.email, profile.name)
+                pendingPrompt?.let { pendingPrompt = null; ask(it) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                signInError = e.message ?: "Sign-in failed"
+            } finally {
+                signingIn = false
+            }
+        }
+    }
+
+    fun signOut() {
+        val email = prefs.accountEmail
+        prefs.updateAccount(null, null)
+        clearChat()
+        viewModelScope.launch { googleAuth.signOut(email) }
+    }
+
+    private fun credential(): GeminiCredential? = when (prefs.authMode) {
+        GeminiAuthMode.GOOGLE_ACCOUNT -> if (prefs.accountEmail != null) {
+            GeminiCredential.GoogleAccount { force -> googleAuth.accessToken(force) }
+        } else null
+        GeminiAuthMode.API_KEY -> prefs.apiKey.takeIf { it.isNotBlank() }?.let { GeminiCredential.ApiKey(it) }
+    }
+
     fun ask(prompt: String) {
         val text = prompt.trim()
         if (text.isEmpty()) return
-        if (!prefs.agentReady) {
-            GeminiBridge.ask(context, text)
+        geminiSheetOpen = true
+        val credential = credential()
+        if (credential == null) {
+            // Not signed in yet: keep the prompt and send it right after sign-in.
+            pendingPrompt = text
+            if (prefs.authMode == GeminiAuthMode.GOOGLE_ACCOUNT) signIn()
             return
         }
-        geminiSheetOpen = true
         chat += ChatItem(ChatRole.USER, text)
         agentJob?.cancel()
         agentJob = viewModelScope.launch {
             agentBusy = true
             try {
-                agent.send(text, prefs.apiKey, prefs.model, apps.value.map { it.label }.distinct()) { event ->
+                agent.send(text, credential, prefs.model, apps.value.map { it.label }.distinct()) { event ->
                     when (event) {
                         is AuraAgent.Event.Reply -> chat += ChatItem(ChatRole.GEMINI, event.text)
                         is AuraAgent.Event.Action -> chat += ChatItem(ChatRole.ACTION, event.label, event.ok)
                     }
                 }
-            } catch (e: kotlinx.coroutines.CancellationException) {
+            } catch (e: CancellationException) {
                 throw e
+            } catch (e: SignInRequiredException) {
+                // Consent was withdrawn or expired; ask again in place.
+                prefs.updateAccount(null, null)
+                chat += ChatItem(ChatRole.ERROR, "Please sign in with Google again to keep using Gemini.")
             } catch (e: Exception) {
                 chat += ChatItem(ChatRole.ERROR, e.message ?: "Something went wrong")
             } finally {

@@ -1,10 +1,7 @@
 package com.aura.launcher.ui
 
-import android.app.Activity
-import android.content.Intent
-import android.speech.RecognizerIntent
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import android.Manifest
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -37,26 +34,33 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aura.launcher.ActivityBridge
 import com.aura.launcher.ChatItem
 import com.aura.launcher.ChatRole
 import com.aura.launcher.ui.theme.Aura
+import kotlinx.coroutines.launch
 
 private val suggestions = listOf(
     "Turn on the flashlight",
@@ -68,44 +72,46 @@ private val suggestions = listOf(
     "Play something relaxing",
 )
 
+data class GeminiSheetState(
+    val chat: List<ChatItem>,
+    val busy: Boolean,
+    val needsSignIn: Boolean,
+    val signingIn: Boolean,
+    val signInError: String?,
+    val accountLabel: String?,
+    val model: String,
+    val listenRequest: Int,
+)
+
 @Composable
 fun GeminiSheet(
-    chat: List<ChatItem>,
-    busy: Boolean,
-    agentReady: Boolean,
-    model: String,
+    state: GeminiSheetState,
     onSend: (String) -> Unit,
-    onVoice: () -> Unit,
-    onOpenGeminiApp: () -> Unit,
+    onSignIn: () -> Unit,
     onClear: () -> Unit,
-    onSetup: () -> Unit,
+    onOpenSettings: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var text by rememberSaveable { mutableStateOf("") }
     val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    val voice = remember { VoiceInput(context) }
+    DisposableEffect(Unit) { onDispose { voice.stop() } }
 
-    val speech = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let(onSend)
-        }
-    }
-    val mic: () -> Unit = {
-        if (agentReady) {
-            runCatching {
-                speech.launch(
-                    Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-                        .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                        .putExtra(RecognizerIntent.EXTRA_PROMPT, "Ask Gemini")
-                )
-            }.onFailure { onVoice() }
-        } else {
-            onVoice()
-        }
-    }
-    val submit: () -> Unit = {
-        val t = text.trim()
+    val submit: (String) -> Unit = { raw ->
+        val t = raw.trim()
         if (t.isNotEmpty()) { onSend(t); text = "" }
+    }
+    val listen: () -> Unit = {
+        scope.launch {
+            if (ActivityBridge.ensurePermission(context, Manifest.permission.RECORD_AUDIO)) {
+                voice.start { spoken -> submit(spoken) }
+            }
+        }
+    }
+    LaunchedEffect(state.listenRequest) {
+        if (state.listenRequest > 0 && !state.needsSignIn) listen() else if (!state.needsSignIn) runCatching { focus.requestFocus() }
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -131,44 +137,40 @@ fun GeminiSheet(
                 Column(Modifier.weight(1f)) {
                     Text("Gemini", color = Aura.Ink, fontSize = 20.sp, fontFamily = Aura.Sans)
                     Text(
-                        if (agentReady) "Acting on your phone · $model" else "Sends to the Google Gemini app",
-                        color = Aura.InkDim, fontSize = 13.sp, fontFamily = Aura.Sans,
+                        state.accountLabel ?: "Built into AURA",
+                        color = Aura.InkDim, fontSize = 13.sp, fontFamily = Aura.Sans, maxLines = 1,
                     )
                 }
-                if (chat.isNotEmpty()) SmallTextButton("New chat", onClear)
+                if (state.chat.isNotEmpty()) SmallTextButton("New chat", onClear)
                 IconCircle(Glyph.Close, "Close", onDismiss)
             }
             Spacer(Modifier.height(14.dp))
 
-            if (chat.isEmpty()) {
-                if (!agentReady) {
-                    Text(
-                        "Tip: add a Gemini API key in AURA settings to let Gemini act on your phone right here " +
-                            "(flashlight, alarms, calls, messages, navigation, settings).",
-                        color = Aura.InkDim, fontSize = 14.sp, fontFamily = Aura.Sans,
-                        modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable(onClick = onSetup).padding(4.dp),
-                    )
-                    Spacer(Modifier.height(12.dp))
-                }
+            if (state.needsSignIn) {
+                SignInCard(state.signingIn, state.signInError, onSignIn, onOpenSettings)
+                return@Column
+            }
+
+            if (state.chat.isEmpty()) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 4.dp)) {
                     items(suggestions) { s ->
                         Text(
                             s, color = Aura.Ink, fontSize = 14.sp, fontFamily = Aura.Sans,
-                            modifier = Modifier.glass(RoundedCornerShape(20.dp)).clickable { onSend(s) }
+                            modifier = Modifier.glass(RoundedCornerShape(20.dp)).clickable { submit(s) }
                                 .padding(horizontal = 16.dp, vertical = 10.dp),
                         )
                     }
                 }
             } else {
                 val listState = rememberLazyListState()
-                LaunchedEffect(chat.size) { listState.animateScrollToItem(chat.size - 1) }
+                LaunchedEffect(state.chat.size, state.busy) { listState.animateScrollToItem(listState.layoutInfo.totalItemsCount.coerceAtLeast(1) - 1) }
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.heightIn(max = 380.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(chat) { ChatBubble(it) }
-                    if (busy) item {
+                    items(state.chat) { ChatBubble(it) }
+                    if (state.busy) item {
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(6.dp)) {
                             CircularProgressIndicator(Modifier.size(16.dp), color = Aura.GeminiViolet, strokeWidth = 2.dp)
                             Spacer(Modifier.width(10.dp))
@@ -182,33 +184,111 @@ fun GeminiSheet(
             val shape = RoundedCornerShape(30.dp)
             Row(
                 Modifier.fillMaxWidth().height(60.dp)
-                    .geminiGlow(30.dp, blur = 12.dp, alpha = 0.35f)
+                    .geminiGlow(30.dp, blur = 12.dp, alpha = if (voice.listening) 0.7f else 0.35f)
                     .glass(shape, fill = Color(0xFF2E2A27), stroke = Aura.GeminiViolet.copy(alpha = 0.55f))
                     .padding(start = 20.dp, end = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                    if (text.isEmpty()) Text("What can I do for you?", color = Aura.InkDim, fontSize = 17.sp, fontFamily = Aura.Sans)
-                    BasicTextField(
-                        value = text,
-                        onValueChange = { text = it },
-                        singleLine = true,
-                        textStyle = TextStyle(color = Aura.Ink, fontSize = 17.sp, fontFamily = Aura.Sans),
-                        cursorBrush = SolidColor(Aura.GeminiViolet),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                        keyboardActions = KeyboardActions(onSend = { submit() }),
-                        modifier = Modifier.fillMaxWidth().focusRequester(focus),
-                    )
+                    when {
+                        voice.listening -> Text(
+                            voice.partial.ifEmpty { "Listening…" },
+                            color = if (voice.partial.isEmpty()) Aura.InkDim else Aura.Ink,
+                            fontSize = 17.sp, fontFamily = Aura.Sans, maxLines = 2,
+                        )
+                        else -> {
+                            if (text.isEmpty()) Text(
+                                voice.error ?: "What can I do for you?",
+                                color = Aura.InkDim, fontSize = 17.sp, fontFamily = Aura.Sans,
+                            )
+                            BasicTextField(
+                                value = text,
+                                onValueChange = { text = it },
+                                singleLine = true,
+                                textStyle = TextStyle(color = Aura.Ink, fontSize = 17.sp, fontFamily = Aura.Sans),
+                                cursorBrush = SolidColor(Aura.GeminiViolet),
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                                keyboardActions = KeyboardActions(onSend = { submit(text) }),
+                                modifier = Modifier.fillMaxWidth().focusRequester(focus),
+                            )
+                        }
+                    }
                 }
-                if (text.isBlank()) MicButton(mic, 44.dp) else IconCircle(Glyph.Send, "Send", submit, filled = true)
-            }
-            Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SmallTextButton("Open Gemini app", onOpenGeminiApp, Glyph.External)
-                SmallTextButton("Talk to Gemini", onVoice, Glyph.Mic)
+                when {
+                    voice.listening -> ListeningButton(voice.level) { voice.stop() }
+                    text.isBlank() -> MicButton(listen, 44.dp)
+                    else -> IconCircle(Glyph.Send, "Send", { submit(text) }, filled = true)
+                }
             }
         }
     }
+}
+
+@Composable
+private fun SignInCard(signingIn: Boolean, error: String?, onSignIn: () -> Unit, onOpenSettings: () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp)) {
+        Text("Use Gemini right here", color = Aura.Ink, fontSize = 22.sp, fontFamily = Aura.Sans)
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Sign in with your Google account and allow AURA to use Gemini. You only do this once — " +
+                "after that Gemini answers and acts on your phone straight from the launcher.",
+            color = Aura.InkDim, fontSize = 14.sp, fontFamily = Aura.Sans,
+        )
+        Spacer(Modifier.height(18.dp))
+        Row(
+            Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(28.dp)).background(Color.White)
+                .clickable(enabled = !signingIn, onClick = onSignIn),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            if (signingIn) {
+                CircularProgressIndicator(Modifier.size(20.dp), color = Color(0xFF1F1F1F), strokeWidth = 2.dp)
+                Spacer(Modifier.width(12.dp))
+                Text("Waiting for Google…", color = Color(0xFF1F1F1F), fontSize = 16.sp, fontFamily = Aura.Sans, fontWeight = FontWeight.Medium)
+            } else {
+                GoogleG(Modifier.size(22.dp))
+                Spacer(Modifier.width(12.dp))
+                Text("Continue with Google", color = Color(0xFF1F1F1F), fontSize = 16.sp, fontFamily = Aura.Sans, fontWeight = FontWeight.Medium)
+            }
+        }
+        if (error != null) {
+            Spacer(Modifier.height(12.dp))
+            Text(error, color = Color(0xFFFFB4A9), fontSize = 13.sp, fontFamily = Aura.Sans)
+            SmallTextButton("Open AURA settings", onOpenSettings)
+        }
+        Spacer(Modifier.height(8.dp))
+    }
+}
+
+/** Four-color "G" mark drawn with arcs, used on the sign-in button. */
+@Composable
+private fun GoogleG(modifier: Modifier) {
+    androidx.compose.foundation.Canvas(modifier) {
+        val stroke = size.minDimension * 0.2f
+        val inset = stroke / 2
+        val arcSize = androidx.compose.ui.geometry.Size(size.width - stroke, size.height - stroke)
+        val topLeft = androidx.compose.ui.geometry.Offset(inset, inset)
+        val style = androidx.compose.ui.graphics.drawscope.Stroke(stroke)
+        drawArc(Color(0xFFEA4335), -150f, 105f, false, topLeft, arcSize, style = style)
+        drawArc(Color(0xFFFBBC05), 150f, 60f, false, topLeft, arcSize, style = style)
+        drawArc(Color(0xFF34A853), 45f, 105f, false, topLeft, arcSize, style = style)
+        drawArc(Color(0xFF4285F4), -10f, 55f, false, topLeft, arcSize, style = style)
+        drawRect(
+            Color(0xFF4285F4),
+            androidx.compose.ui.geometry.Offset(size.width / 2, size.height / 2 - stroke / 2),
+            androidx.compose.ui.geometry.Size(size.width / 2 - inset / 2, stroke),
+        )
+    }
+}
+
+@Composable
+private fun ListeningButton(level: Float, onStop: () -> Unit) {
+    val pulse by animateFloatAsState(1f + level * 0.25f, label = "pulse")
+    Box(
+        Modifier.size(44.dp).scale(pulse).clip(CircleShape).background(Aura.geminiFill)
+            .clickable(onClickLabel = "Stop listening", onClick = onStop),
+        contentAlignment = Alignment.Center,
+    ) { AuraGlyph(Glyph.Mic, size = 20.dp, color = Color.White) }
 }
 
 @Composable
@@ -250,12 +330,9 @@ private fun IconCircle(glyph: Glyph, label: String, onClick: () -> Unit, filled:
 }
 
 @Composable
-private fun SmallTextButton(label: String, onClick: () -> Unit, glyph: Glyph? = null) {
-    Row(
-        Modifier.clip(RoundedCornerShape(18.dp)).clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        glyph?.let { AuraGlyph(it, size = 15.dp, color = Aura.InkDim); Spacer(Modifier.width(6.dp)) }
-        Text(label, color = Aura.InkDim, fontSize = 14.sp, fontFamily = Aura.Sans)
-    }
+private fun SmallTextButton(label: String, onClick: () -> Unit) {
+    Text(
+        label, color = Aura.InkDim, fontSize = 14.sp, fontFamily = Aura.Sans,
+        modifier = Modifier.clip(RoundedCornerShape(18.dp)).clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp),
+    )
 }
