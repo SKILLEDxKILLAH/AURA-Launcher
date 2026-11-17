@@ -20,7 +20,11 @@ import com.aura.launcher.data.GeminiAuthMode
 import com.aura.launcher.data.WeatherNow
 import com.aura.launcher.data.WeatherService
 import com.aura.launcher.gemini.AuraAgent
+import com.aura.launcher.gemini.CheckResult
+import com.aura.launcher.gemini.GeminiApi
 import com.aura.launcher.gemini.GeminiCredential
+import com.aura.launcher.gemini.GeminiDiagnostics
+import com.aura.launcher.gemini.GeminiModel
 import com.aura.launcher.gemini.GoogleAccountAuth
 import com.aura.launcher.gemini.PhoneTools
 import com.aura.launcher.gemini.SignInRequiredException
@@ -242,6 +246,68 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 chat += ChatItem(ChatRole.ERROR, e.message ?: "Something went wrong")
             } finally {
                 agentBusy = false
+            }
+        }
+    }
+
+    // ---- Models ---------------------------------------------------------------------------------
+
+    var models by mutableStateOf<List<GeminiModel>>(emptyList())
+        private set
+    var modelsLoading by mutableStateOf(false)
+        private set
+    var modelsError by mutableStateOf<String?>(null)
+        private set
+
+    /** Fetches the models this account can use (once per session unless [force]). */
+    fun loadModels(force: Boolean = false) {
+        if (modelsLoading || (models.isNotEmpty() && !force)) return
+        val credential = credential() ?: return
+        modelsLoading = true
+        modelsError = null
+        viewModelScope.launch {
+            try {
+                models = GeminiApi.listModels(credential)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                modelsError = e.message ?: "Couldn't load models"
+            } finally {
+                modelsLoading = false
+            }
+        }
+    }
+
+    fun selectModel(id: String) {
+        if (id == prefs.model) return
+        prefs.updateModel(id)
+        // Model-specific reasoning state can't be mixed across models, so start a fresh context.
+        agentJob?.cancel()
+        agent.reset()
+        if (chat.isNotEmpty()) chat += ChatItem(ChatRole.ACTION, "Switched to ${models.firstOrNull { it.id == id }?.displayName ?: id}")
+    }
+
+    // ---- Diagnostics ----------------------------------------------------------------------------
+
+    val diagnostics = mutableStateListOf<CheckResult>()
+    var diagnosticsOpen by mutableStateOf(false)
+    var diagnosticsRunning by mutableStateOf(false)
+        private set
+
+    fun runDiagnostics() {
+        if (diagnosticsRunning) return
+        diagnosticsOpen = true
+        diagnostics.clear()
+        diagnosticsRunning = true
+        viewModelScope.launch {
+            try {
+                GeminiDiagnostics.run(context, prefs, credential(), tools) { diagnostics += it }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                diagnostics += CheckResult("Unexpected error", false, e.message ?: e.javaClass.simpleName)
+            } finally {
+                diagnosticsRunning = false
             }
         }
     }

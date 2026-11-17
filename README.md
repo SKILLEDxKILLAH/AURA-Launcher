@@ -53,7 +53,19 @@ Requested scopes: `generative-language.retriever` and `cloud-platform` (the pair
 
 > Usage counts against your Cloud project's Gemini API quota (free tier, or billing if enabled). It does **not** use a consumer Gemini / Google One AI subscription, because Google doesn't let third-party apps use those.
 
-**Advanced:** under Settings → Gemini → Advanced you can change the model (default `gemini-flash-latest`) or use an AI Studio API key instead of signing in.
+**Choosing a model:** tap the model chip next to your email at the top of the Gemini panel, e.g. **Flash Latest ▾**. The list comes live from Google for your account. It shows only models that can chat and use tools, so embeddings, image, audio and Gemma models are left out. "Latest" aliases come first, then the newest versions. Switching models starts a fresh context.
+
+**Gemini check:** tap the model chip → **Run Gemini check**, or go to Settings → Gemini → **Run Gemini check**. It tests, in order:
+1. Your sign-in.
+2. Getting an access token.
+3. Loading the model list.
+4. A real reply.
+5. A real phone-action decision. The tool isn't run.
+6. Permissions.
+
+Then tap **Copy report** to share the results for troubleshooting. The report contains no tokens or keys.
+
+**Advanced:** under Settings → Gemini → Advanced you can type any model ID or use an AI Studio API key instead of signing in.
 
 ### App drawer
 - Swipe left from the right side of the screen; the drawer slides in from the right.

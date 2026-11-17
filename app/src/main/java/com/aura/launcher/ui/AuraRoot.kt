@@ -122,7 +122,8 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
         }
         BackHandler(enabled = homeMenuAt != null) { homeMenuAt = null }
         BackHandler(enabled = vm.geminiSheetOpen) { vm.geminiSheetOpen = false }
-        BackHandler(enabled = vm.settingsOpen) { vm.settingsOpen = false }
+        BackHandler(enabled = vm.settingsOpen && !vm.diagnosticsOpen) { vm.settingsOpen = false }
+        BackHandler(enabled = vm.diagnosticsOpen) { vm.diagnosticsOpen = false }
 
         val dragState = rememberDraggableState { dragBy(-it) }
 
@@ -245,12 +246,18 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
                     accountLabel = if (prefs.authMode == com.aura.launcher.data.GeminiAuthMode.API_KEY) "API key" else prefs.accountEmail,
                     model = prefs.model,
                     listenRequest = vm.listenRequest,
+                    models = vm.models,
+                    modelsLoading = vm.modelsLoading,
+                    modelsError = vm.modelsError,
                 ),
                 onSend = { vm.ask(it) },
                 onSignIn = { vm.signIn() },
                 onClear = { vm.clearChat() },
                 onOpenSettings = { vm.geminiSheetOpen = false; vm.settingsOpen = true },
                 onDismiss = { vm.geminiSheetOpen = false },
+                onLoadModels = { vm.loadModels() },
+                onSelectModel = vm::selectModel,
+                onRunCheck = vm::runDiagnostics,
             )
         }
 
@@ -269,6 +276,10 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
             GestureSetupBanner(onEnable = vm::enableGestureService, onAppInfo = vm::openAuraAppInfo, onDismiss = vm::dismissGestureHint)
         }
 
+        AnimatedVisibility(vm.diagnosticsOpen, enter = fadeIn(), exit = fadeOut()) {
+            DiagnosticsSheet(vm.diagnostics, vm.diagnosticsRunning, onRunAgain = vm::runDiagnostics) { vm.diagnosticsOpen = false }
+        }
+
         AnimatedVisibility(vm.settingsOpen, enter = fadeIn(), exit = fadeOut()) {
             SettingsScreen(
                 prefs = prefs,
@@ -276,6 +287,7 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
                 signInError = vm.signInError,
                 onSignIn = { vm.signIn() },
                 onSignOut = { vm.signOut() },
+                onRunCheck = vm::runDiagnostics,
                 requestPermissions = requestPermissions,
             ) { vm.settingsOpen = false }
         }

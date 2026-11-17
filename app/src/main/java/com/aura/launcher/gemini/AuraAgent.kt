@@ -6,9 +6,6 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
-import java.net.HttpURLConnection
-import java.net.URL
-import java.net.URLEncoder
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 
@@ -16,16 +13,6 @@ import java.time.format.DateTimeFormatter
  * In-launcher Gemini agent. Talks to the Gemini API with function calling and executes the
  * returned calls through [PhoneTools], so Gemini can operate the phone directly from AURA.
  */
-/** How a Gemini API request is authenticated. */
-sealed interface GeminiCredential {
-    data class ApiKey(val key: String) : GeminiCredential
-
-    /** Google-account OAuth; [token] returns a fresh access token, refreshing when asked. */
-    class GoogleAccount(val token: suspend (forceRefresh: Boolean) -> String) : GeminiCredential
-}
-
-private class HttpStatusException(val code: Int, message: String) : IOException(message)
-
 class AuraAgent(private val tools: PhoneTools) {
 
     sealed interface Event {
@@ -81,60 +68,13 @@ class AuraAgent(private val tools: PhoneTools) {
         }
     }
 
-    private suspend fun generateAuthorized(credential: GeminiCredential, model: String, appNames: List<String>): JSONObject =
-        when (credential) {
-            is GeminiCredential.ApiKey -> withContext(Dispatchers.IO) { generate("x-goog-api-key", credential.key, model, appNames) }
-            is GeminiCredential.GoogleAccount -> {
-                val token = credential.token(false)
-                try {
-                    withContext(Dispatchers.IO) { generate("Authorization", "Bearer $token", model, appNames) }
-                } catch (e: HttpStatusException) {
-                    if (e.code != 401) throw e
-                    // Token expired or was revoked: refresh silently and retry once.
-                    val fresh = credential.token(true)
-                    withContext(Dispatchers.IO) { generate("Authorization", "Bearer $fresh", model, appNames) }
-                }
-            }
-        }
-
-    private fun generate(authHeader: String, authValue: String, model: String, appNames: List<String>): JSONObject {
+    private suspend fun generateAuthorized(credential: GeminiCredential, model: String, appNames: List<String>): JSONObject {
         val body = JSONObject()
             .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", systemPrompt(appNames)))))
             .put("contents", history)
             .put("tools", JSONArray().put(JSONObject().put("functionDeclarations", tools.declarations())))
             .put("toolConfig", JSONObject().put("functionCallingConfig", JSONObject().put("mode", "AUTO")))
-
-        val url = URL("https://generativelanguage.googleapis.com/v1beta/models/${URLEncoder.encode(model, "UTF-8")}:generateContent")
-        val conn = (url.openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            doOutput = true
-            connectTimeout = 15_000
-            readTimeout = 60_000
-            setRequestProperty("Content-Type", "application/json; charset=utf-8")
-            setRequestProperty(authHeader, authValue)
-        }
-        try {
-            conn.outputStream.use { it.write(body.toString().toByteArray()) }
-            val code = conn.responseCode
-            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-            val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-            if (code !in 200..299) {
-                val msg = runCatching { JSONObject(text).getJSONObject("error").getString("message") }.getOrNull()
-                throw HttpStatusException(code, friendlyError(code, msg ?: text.take(200)))
-            }
-            return JSONObject(text)
-        } finally {
-            conn.disconnect()
-        }
-    }
-
-    private fun friendlyError(code: Int, msg: String): String = when {
-        code == 401 -> "Your Google sign-in expired — sign in again"
-        code == 403 && (msg.contains("SERVICE_DISABLED", true) || msg.contains("has not been used in project", true)) ->
-            "The Gemini API isn't enabled in your Google Cloud project yet. Enable “Generative Language API”, then try again."
-        code == 403 && msg.contains("scope", true) -> "Google didn't grant Gemini access. Sign out and sign in again in AURA settings."
-        code == 429 -> "Gemini is busy or your quota is used up — try again in a moment"
-        else -> "Gemini error $code: $msg"
+        return GeminiApi.generate(credential, model, body)
     }
 
     private fun systemPrompt(appNames: List<String>): String {

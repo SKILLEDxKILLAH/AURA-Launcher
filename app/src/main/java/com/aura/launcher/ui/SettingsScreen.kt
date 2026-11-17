@@ -50,6 +50,7 @@ fun SettingsScreen(
     signInError: String?,
     onSignIn: () -> Unit,
     onSignOut: () -> Unit,
+    onRunCheck: () -> Unit,
     requestPermissions: (List<String>) -> Unit,
     onClose: () -> Unit,
 ) {
@@ -121,11 +122,13 @@ fun SettingsScreen(
                 )
             }
 
+            ActionRow("Run Gemini check", "Tests sign-in, a live reply and phone actions, with a report you can copy", onRunCheck)
+
             var advanced by remember { mutableStateOf(prefs.authMode == GeminiAuthMode.API_KEY) }
             ActionRow("Advanced", if (advanced) "Hide model and API key options" else "Model, API key instead of Google sign-in") { advanced = !advanced }
             if (advanced) {
                 var model by remember { mutableStateOf(prefs.model) }
-                Field("Model", model, { model = it; prefs.updateModel(it) })
+                Field("Model ID (or pick one from the Gemini panel)", model, { model = it; prefs.updateModel(it) })
                 ToggleRow(
                     "Use an API key instead",
                     "Skip Google sign-in and authenticate with an AI Studio key",
@@ -162,7 +165,7 @@ fun SettingsScreen(
         }
 
         Group("About") {
-            Text("AURA Launcher 1.4.1 · Built for Android 17", color = Aura.InkDim, fontSize = 14.sp, modifier = Modifier.padding(6.dp))
+            Text("AURA Launcher 1.5 · Built for Android 17", color = Aura.InkDim, fontSize = 14.sp, modifier = Modifier.padding(6.dp))
             Text("Tips: swipe left from the right edge for apps · swipe down for notifications (two fingers: Quick Settings) · press and hold for wallpaper & settings · drag the letters on the right · tap the mic to talk to Gemini · long-press “Android 17” for these settings.",
                 color = Aura.InkFaint, fontSize = 13.sp, modifier = Modifier.padding(6.dp))
         }

@@ -171,6 +171,26 @@ class ScreenshotTest {
         save("home_menu")
     }
 
+    @Test
+    fun diagnostics() {
+        compose.setContent {
+            AuraTheme {
+                com.aura.launcher.ui.DiagnosticsSheet(
+                    results = listOf(
+                        com.aura.launcher.gemini.CheckResult("Device", null, "Android 17 (API 37) · Google Pixel"),
+                        com.aura.launcher.gemini.CheckResult("Sign-in", true, "Using Google account"),
+                        com.aura.launcher.gemini.CheckResult("Access token", true, "Obtained in 84 ms"),
+                        com.aura.launcher.gemini.CheckResult("Models", true, "14 chat models available · current model OK"),
+                        com.aura.launcher.gemini.CheckResult("Gemini reply", true, "“AURA OK” in 912 ms"),
+                        com.aura.launcher.gemini.CheckResult("Phone actions", true, "Gemini chose get_device_status in 1104 ms"),
+                    ),
+                    running = false, onRunAgain = {}, onClose = {},
+                )
+            }
+        }
+        save("diagnostics")
+    }
+
     private fun renderDrawer() {
         val repo = AppRepository(context)
         compose.setContent {
