@@ -114,7 +114,7 @@ fun SettingsScreen(prefs: AuraPrefs, requestPermissions: (List<String>) -> Unit,
         }
 
         Group("About") {
-            Text("AURA Launcher 1.0 · Built for Android 17", color = Aura.InkDim, fontSize = 14.sp, modifier = Modifier.padding(6.dp))
+            Text("AURA Launcher 1.1 · Built for Android 17", color = Aura.InkDim, fontSize = 14.sp, modifier = Modifier.padding(6.dp))
             Text("Tips: swipe up for apps · drag the letters on the right · long-press the Gemini card for the full Gemini app · long-press “Android 17” for these settings.",
                 color = Aura.InkFaint, fontSize = 13.sp, modifier = Modifier.padding(6.dp))
         }
