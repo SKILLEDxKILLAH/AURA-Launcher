@@ -158,6 +158,19 @@ class ScreenshotTest {
         save("gemini_chat")
     }
 
+    @Test
+    fun pressAndHoldMenu() {
+        val vm = MainViewModel(context)
+        compose.setContent { AuraTheme { com.aura.launcher.ui.AuraRoot(vm) {} } }
+        compose.onRoot().performTouchInput {
+            down(Offset(width * 0.5f, height * 0.55f))
+            advanceEventTime(900)
+            up()
+        }
+        compose.mainClock.advanceTimeBy(400)
+        save("home_menu")
+    }
+
     private fun renderDrawer() {
         val repo = AppRepository(context)
         compose.setContent {

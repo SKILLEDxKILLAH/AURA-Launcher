@@ -59,6 +59,8 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
     var settleJob by remember { mutableStateOf<Job?>(null) }
     var query by rememberSaveable { mutableStateOf("") }
     var focusToken by remember { mutableIntStateOf(0) }
+    var homeMenuAt by remember { mutableStateOf<androidx.compose.ui.geometry.Offset?>(null) }
+    val view = androidx.compose.ui.platform.LocalView.current
 
     val favorites = remember(apps, prefs.favorites, counts) {
         val pinned = apps.filter { it.key in prefs.favorites }
@@ -110,6 +112,7 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
                 settleJob?.cancel()
                 drawer = 0f
                 query = ""
+                homeMenuAt = null
                 focusManager.clearFocus()
             }
         }
@@ -117,13 +120,25 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
         BackHandler(enabled = drawer > 0f && !vm.geminiSheetOpen && !vm.settingsOpen) {
             if (query.isNotEmpty()) query = "" else closeDrawer()
         }
+        BackHandler(enabled = homeMenuAt != null) { homeMenuAt = null }
         BackHandler(enabled = vm.geminiSheetOpen) { vm.geminiSheetOpen = false }
         BackHandler(enabled = vm.settingsOpen) { vm.settingsOpen = false }
 
         val dragState = rememberDraggableState { dragBy(-it) }
 
         // ---- Background --------------------------------------------------------------------
-        if (prefs.useAuraBackdrop) AuraBackdrop(drift = drawer)
+        if (prefs.useAuraBackdrop) {
+            AuraBackdrop(drift = drawer)
+        } else {
+            // Keep white text legible over any system wallpaper.
+            Box(
+                Modifier.fillMaxSize().background(
+                    androidx.compose.ui.graphics.Brush.verticalGradient(
+                        0f to Color(0x66000000), 0.35f to Color(0x1A000000), 0.6f to Color(0x1A000000), 1f to Color(0x80000000),
+                    )
+                )
+            )
+        }
         Box(Modifier.fillMaxSize().graphicsLayer { alpha = drawer }.background(Color(0x59000000)))
 
         // ---- Home --------------------------------------------------------------------------
@@ -165,6 +180,14 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
                     // Lets a swipe that starts right at the right edge reach AURA instead of
                     // the system back gesture (Android caps this at 200dp per edge).
                     .rightEdgeGestureZone()
+                    // Press and hold → menu; swipe down with 1 finger → notifications, 2 → Quick Settings.
+                    .homeGestures(
+                        onLongPress = { pos ->
+                            view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                            homeMenuAt = pos
+                        },
+                        onSwipeDown = { fingers -> vm.pullDown(fingers) },
+                    )
                     .draggable(dragState, Orientation.Horizontal, onDragStopped = { v -> settle(-v) }),
             )
         }
@@ -229,6 +252,21 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
                 onOpenSettings = { vm.geminiSheetOpen = false; vm.settingsOpen = true },
                 onDismiss = { vm.geminiSheetOpen = false },
             )
+        }
+
+        homeMenuAt?.let { anchor ->
+            HomeMenu(
+                anchor = anchor,
+                usingSystemWallpaper = !prefs.useAuraBackdrop,
+                onWallpaper = { homeMenuAt = null; vm.openWallpaperPicker() },
+                onUseAuraBackdrop = { homeMenuAt = null; prefs.updateUseAuraBackdrop(true) },
+                onSettings = { homeMenuAt = null; vm.settingsOpen = true },
+                onDismiss = { homeMenuAt = null },
+            )
+        }
+
+        AnimatedVisibility(vm.gestureSetupNeeded, enter = fadeIn(), exit = fadeOut()) {
+            GestureSetupBanner(onEnable = vm::enableGestureService, onDismiss = vm::dismissGestureHint)
         }
 
         AnimatedVisibility(vm.settingsOpen, enter = fadeIn(), exit = fadeOut()) {

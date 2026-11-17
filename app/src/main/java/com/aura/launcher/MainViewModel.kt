@@ -1,6 +1,10 @@
 package com.aura.launcher
 
 import android.app.Application
+import android.app.WallpaperManager
+import android.content.Intent
+import android.provider.Settings
+import com.aura.launcher.system.SystemPanels
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -99,10 +103,53 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun onResumed() {
+        checkWallpaperChanged()
         dock = DockResolver.resolve(context)
         weatherNeedsPermission = !WeatherService.hasPermission(context)
         val now = System.currentTimeMillis()
         if (prefs.showWeather && now - lastWeatherAt > 20 * 60_000) refreshWeather()
+    }
+
+    // ---- Home gestures -------------------------------------------------------------------------
+
+    /** Shown when the system needs the AURA gestures accessibility service turned on. */
+    var gestureSetupNeeded by mutableStateOf(false)
+    private var gestureHintDismissed = false
+
+    fun pullDown(fingers: Int) {
+        val result = if (fingers >= 2) SystemPanels.quickSettings(context) else SystemPanels.notifications(context)
+        if (result == SystemPanels.Result.NEEDS_SETUP && !gestureHintDismissed) gestureSetupNeeded = true
+    }
+
+    fun enableGestureService() {
+        gestureSetupNeeded = false
+        ActivityBridge.start(context, Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+    }
+
+    fun dismissGestureHint() {
+        gestureSetupNeeded = false
+        gestureHintDismissed = true
+    }
+
+    // ---- Wallpaper ------------------------------------------------------------------------------
+
+    private var wallpaperIdBeforePick: Int? = null
+
+    /** Opens the system wallpaper picker; if a new wallpaper is applied, AURA shows it automatically. */
+    fun openWallpaperPicker() {
+        val wm = WallpaperManager.getInstance(context)
+        wallpaperIdBeforePick = runCatching { wm.getWallpaperId(WallpaperManager.FLAG_SYSTEM) }.getOrNull()
+        val pixelPicker = Intent(Intent.ACTION_SET_WALLPAPER).setPackage("com.google.android.apps.wallpaper")
+        if (!ActivityBridge.start(context, pixelPicker)) {
+            ActivityBridge.start(context, Intent.createChooser(Intent(Intent.ACTION_SET_WALLPAPER), "Wallpaper & style"))
+        }
+    }
+
+    private fun checkWallpaperChanged() {
+        val before = wallpaperIdBeforePick ?: return
+        wallpaperIdBeforePick = null
+        val now = runCatching { WallpaperManager.getInstance(context).getWallpaperId(WallpaperManager.FLAG_SYSTEM) }.getOrNull()
+        if (now != null && now != before) prefs.updateUseAuraBackdrop(false)
     }
 
     fun refreshWeather() {

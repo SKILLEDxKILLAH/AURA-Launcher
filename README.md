@@ -12,6 +12,7 @@ A minimalist home screen for **Android 17**, with Google Gemini built into the h
 
 ### Minimalist home
 - A large thin clock, the date, and local weather from Open‑Meteo. Weather needs no API key and uses only your coarse location.
+- Press and hold for **Wallpaper & style** or **AURA settings**. If you apply a new wallpaper, AURA switches to showing it automatically, with a soft shade so text stays readable. You can switch back to the AURA backdrop from the same menu.
 - The AURA backdrop: a charcoal sky, a diagonal shaft of warm light, and sand dunes with glowing ridges. You can switch to your system wallpaper in settings.
 - A Gemini card above the dock, with nothing else in the way.
 - A dock with your real default Phone, Messages, Browser, Photos and Camera apps.
@@ -70,12 +71,18 @@ Requested scopes: `generative-language.retriever` and `cloud-platform` (the pair
 ### Gestures
 | Gesture | Action |
 |---|---|
+| Swipe down (one finger) | Notifications |
+| Swipe down (two fingers) | Quick Settings |
+| Press and hold on empty space | Wallpaper & style, AURA settings |
 | Swipe left from the right side | Open the app drawer |
 | Swipe right / Back | Close the drawer |
 | Tap the Gemini card / bar / sparkle | Open the Gemini panel |
 | Mic button or long-press the card | Talk to Gemini |
 | Long-press "Android 17" | AURA settings |
 | Tap the clock / date / weather | Clock / Calendar / Weather |
+
+### Notifications & Quick Settings
+Swipe down anywhere on the home screen: **one finger** opens notifications and **two fingers** open Quick Settings. AURA first tries the same system call other launchers use. If Android blocks it, AURA asks once whether to turn on **AURA gestures** in Accessibility. That service only opens those two panels, and it reads nothing on your screen.
 
 ## Requirements
 - **Android 17 (API 37) only.** `minSdk` and `targetSdk` are both 37.
