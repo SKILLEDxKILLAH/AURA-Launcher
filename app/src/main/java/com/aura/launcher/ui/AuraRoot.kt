@@ -325,6 +325,8 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
                 topLine = topLine,
                 suggested = vm.suggested,
                 recent = vm.recent,
+                showGeminiBar = prefs.drawerGeminiBar,
+                showGeminiButton = prefs.drawerGeminiButton,
                 modifier = Modifier
                     .graphicsLayer {
                         alpha = (drawer * 1.5f).coerceIn(0f, 1f)

@@ -92,6 +92,7 @@ Then tap **Copy report** to share the results for troubleshooting. The report co
   - Nothing leaves the device.
 - The scroll preview highlights every app: any point along a row's height counts. When a letter has more apps than fit, sliding your finger down scrolls through them all.
 - Long-press an app to add it to favorites, open App info, or uninstall it.
+- Settings → **App drawer** lets you hide the drawer's Gemini bar and ✦ button. Gemini stays on the home screen either way.
 - Work-profile apps are included and badged.
 
 ### Gestures

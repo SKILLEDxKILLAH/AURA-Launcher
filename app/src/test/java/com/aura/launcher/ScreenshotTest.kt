@@ -17,6 +17,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTouchInput
@@ -497,6 +498,45 @@ class ScreenshotTest {
         compose.onNodeWithText("Recent").performClick()
         compose.mainClock.advanceTimeBy(500)
         compose.onNodeWithText("Weather").assertExists()
+    }
+
+    private fun clickLabel(label: String) = androidx.compose.ui.test.SemanticsMatcher("click label = $label") {
+        it.config.getOrElseNullable(androidx.compose.ui.semantics.SemanticsActions.OnClick) { null }?.label == label
+    }
+
+    @Test
+    fun geminiCanBeRemovedFromTheDrawerInSettings() {
+        val vm = MainViewModel(context)
+        vm.prefs.updateDrawerGeminiBar(true)
+        vm.prefs.updateDrawerGeminiButton(true)
+        compose.setContent { AuraTheme { com.aura.launcher.ui.AuraRoot(vm) {} } }
+
+        // Turn both off through the Settings screen.
+        vm.settingsOpen = true
+        compose.mainClock.advanceTimeBy(500)
+        compose.onNodeWithText("Gemini bar").performScrollTo().performClick()
+        compose.onNodeWithText("Gemini button").performScrollTo().performClick()
+        org.junit.Assert.assertFalse(vm.prefs.drawerGeminiBar)
+        org.junit.Assert.assertFalse(vm.prefs.drawerGeminiButton)
+        vm.settingsOpen = false
+        compose.mainClock.advanceTimeBy(500)
+
+        // Open the drawer: no Gemini bar or button there, but the home card is untouched.
+        compose.onRoot().performTouchInput {
+            down(Offset(width - 40f, height * 0.5f)); repeat(8) { moveBy(Offset(-width * 0.08f, 0f)) }; up()
+        }
+        compose.mainClock.advanceTimeBy(1500)
+        compose.onNodeWithText("Search apps, settings, or ask Gemini…").assertExists()
+        compose.onNodeWithText("What can I do for you?").assertDoesNotExist()
+        compose.onNode(clickLabel("Open Gemini")).assertDoesNotExist()
+        save("drawer_no_gemini")
+
+        // Turning them back on restores both.
+        vm.prefs.updateDrawerGeminiBar(true)
+        vm.prefs.updateDrawerGeminiButton(true)
+        compose.mainClock.advanceTimeBy(500)
+        compose.onNodeWithText("What can I do for you?").assertExists()
+        compose.onNode(clickLabel("Open Gemini")).assertExists()
     }
 
     private fun renderDrawer() {

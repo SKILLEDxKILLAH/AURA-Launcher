@@ -92,6 +92,23 @@ fun SettingsScreen(
             ToggleRow("Fahrenheit", null, prefs.fahrenheit, prefs::updateFahrenheit)
         }
 
+        Group("App drawer") {
+            ToggleRow(
+                "Gemini bar",
+                "The “What can I do for you?” bar at the bottom of the app drawer",
+                prefs.drawerGeminiBar, prefs::updateDrawerGeminiBar,
+            )
+            ToggleRow(
+                "Gemini button",
+                "The round ✦ button above it",
+                prefs.drawerGeminiButton, prefs::updateDrawerGeminiButton,
+            )
+            Text(
+                "Gemini stays on your home screen either way.",
+                color = Aura.InkFaint, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+            )
+        }
+
         Group("App suggestions") {
             Text(
                 "The top of the app drawer suggests apps you're likely to want now, learned on this phone from when " +
@@ -191,7 +208,7 @@ fun SettingsScreen(
         }
 
         Group("About") {
-            Text("AURA Launcher 1.9 · Built for Android 17", color = Aura.InkDim, fontSize = 14.sp, modifier = Modifier.padding(6.dp))
+            Text("AURA Launcher 1.9.1 · Built for Android 17", color = Aura.InkDim, fontSize = 14.sp, modifier = Modifier.padding(6.dp))
             Text("Tips: swipe left for apps · swipe right for your news feed · swipe down for notifications (two fingers: Quick Settings) · press and hold for wallpaper & settings · drag the letters on the right · tap the mic to talk to Gemini · tap the top-left text to edit it, long-press it for these settings.",
                 color = Aura.InkFaint, fontSize = 13.sp, modifier = Modifier.padding(6.dp))
         }

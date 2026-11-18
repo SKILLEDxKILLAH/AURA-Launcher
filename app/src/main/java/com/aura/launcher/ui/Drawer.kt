@@ -126,6 +126,8 @@ fun AppDrawer(
     topLine: TopLineState = TopLineState.Default,
     suggested: List<AppEntry> = emptyList(),
     recent: List<AppEntry> = emptyList(),
+    showGeminiBar: Boolean = true,
+    showGeminiButton: Boolean = true,
 ) {
     val showSmart = suggested.isNotEmpty() || recent.isNotEmpty()
     /** The Suggested/Recent row sits above the A–Z list, shifting list indices by one. */
@@ -219,7 +221,7 @@ fun AppDrawer(
                             LazyColumn(
                                 state = listState,
                                 modifier = Modifier.fillMaxSize().fadeMask(),
-                                contentPadding = PaddingValues(start = 14.dp, end = 4.dp, bottom = 88.dp),
+                                contentPadding = PaddingValues(start = 14.dp, end = 4.dp, bottom = if (showGeminiButton) 88.dp else 16.dp),
                             ) {
                                 if (showSmart) item(key = "smart_row", contentType = "smart") {
                                     SmartRow(suggested, recent, repo, actions.launch)
@@ -239,7 +241,7 @@ fun AppDrawer(
                         } else {
                             SearchResults(query, repo, favoriteKeys, actions)
                         }
-                        SparkleFab(
+                        if (showGeminiButton) SparkleFab(
                             onClick = actions.geminiLongPress,
                             onLongClick = actions.geminiVoice,
                             modifier = Modifier.align(Alignment.BottomEnd).padding(end = 2.dp, bottom = 10.dp),
@@ -282,11 +284,15 @@ fun AppDrawer(
                     )
                 }
             }
-            GeminiPill(
-                onOpen = actions.openGeminiSheet,
-                onMic = actions.geminiVoice,
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 18.dp),
-            )
+            if (showGeminiBar) {
+                GeminiPill(
+                    onOpen = actions.openGeminiSheet,
+                    onMic = actions.geminiVoice,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 18.dp),
+                )
+            } else {
+                Spacer(Modifier.height(14.dp))
+            }
             Dock(dock, repo, actions.launchDock, Modifier.padding(bottom = 18.dp))
         }
 

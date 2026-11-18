@@ -46,6 +46,12 @@ class AuraPrefs(context: Context) {
         private set
     var model by mutableStateOf(sp.getString(K_MODEL, DEFAULT_MODEL) ?: DEFAULT_MODEL)
         private set
+    /** Gemini bar at the bottom of the app drawer. */
+    var drawerGeminiBar by mutableStateOf(sp.getBoolean(K_DRAWER_BAR, true))
+        private set
+    /** Round sparkle Gemini button in the app drawer. */
+    var drawerGeminiButton by mutableStateOf(sp.getBoolean(K_DRAWER_BUTTON, true))
+        private set
     var thinking by mutableStateOf(
         runCatching { ThinkingLevel.valueOf(sp.getString(K_THINKING, null) ?: "") }.getOrDefault(ThinkingLevel.AUTO)
     )
@@ -75,6 +81,9 @@ class AuraPrefs(context: Context) {
         accountName = name
         sp.edit { putString(K_ACCOUNT_EMAIL, email); putString(K_ACCOUNT_NAME, name) }
     }
+
+    fun updateDrawerGeminiBar(v: Boolean) { drawerGeminiBar = v; sp.edit { putBoolean(K_DRAWER_BAR, v) } }
+    fun updateDrawerGeminiButton(v: Boolean) { drawerGeminiButton = v; sp.edit { putBoolean(K_DRAWER_BUTTON, v) } }
 
     fun updateThinking(v: ThinkingLevel) { thinking = v; sp.edit { putString(K_THINKING, v.name) } }
 
@@ -111,6 +120,8 @@ class AuraPrefs(context: Context) {
         private const val K_FAVORITES = "favorites"
         private const val K_TOP_MODE = "top_line_mode"
         private const val K_THINKING = "gemini_thinking"
+        private const val K_DRAWER_BAR = "drawer_gemini_bar"
+        private const val K_DRAWER_BUTTON = "drawer_gemini_button"
         private const val K_TOP_LABEL = "top_label"
         const val MAX_LABEL = 40
     }
