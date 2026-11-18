@@ -43,6 +43,7 @@ class MainActivity : ComponentActivity() {
         )
         super.onCreate(savedInstanceState)
         ActivityBridge.attach(this)
+        com.aura.launcher.ui.NetImages.installDiskCache(this)
         setContent {
             AuraTheme {
                 AuraRoot(vm = vm, requestPermissions = { multiPermissionLauncher.launch(it.toTypedArray()) })

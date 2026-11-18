@@ -4,6 +4,7 @@ import android.graphics.BitmapFactory
 import android.util.LruCache
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -32,6 +33,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -107,8 +109,10 @@ fun FeedScreen(state: FeedState, actions: FeedActions, modifier: Modifier = Modi
             }
 
             if (state.stories.isNotEmpty()) item(key = "footer") {
+                val sources = state.stories.map { it.source }.distinct()
                 Text(
-                    "Headlines from Google News", color = Aura.InkFaint, fontSize = 12.sp,
+                    if (sources.size in 1..6) "Stories from " + sources.joinToString(", ") else "Headlines from Google News",
+                    color = Aura.InkFaint, fontSize = 12.sp,
                     modifier = Modifier.fillMaxWidth().padding(top = 10.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
             }
@@ -206,26 +210,78 @@ private fun TopicTabs(current: NewsTopic, onSelect: (NewsTopic) -> Unit) {
     }
 }
 
+/** Solid card color the photo fades into, so text sits on a clean background. */
+private val CardColor = Color(0xFF221F1D)
+
 @Composable
-private fun LeadStory(story: NewsStory, onClick: () -> Unit) {
+private fun LeadStory(story: NewsStory, onClick: () -> Unit) =
+    if (story.imageUrl != null) PictureCard(story, imageHeight = 260.dp, titleSize = 22, onClick = onClick)
+    else TextCard(story, titleSize = 21, onClick = onClick)
+
+@Composable
+private fun StoryRow(story: NewsStory, onClick: () -> Unit) =
+    if (story.imageUrl != null) PictureCard(story, imageHeight = 190.dp, titleSize = 18, onClick = onClick)
+    else TextCard(story, titleSize = 16, onClick = onClick)
+
+/**
+ * Banner card: the article's photo across the top, fading down into the card, with the source
+ * and headline on the fade and a short description underneath.
+ */
+@Composable
+private fun PictureCard(story: NewsStory, imageHeight: Dp, titleSize: Int, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(26.dp)
+    val widthPx = with(androidx.compose.ui.platform.LocalDensity.current) {
+        androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp.roundToPx()
+    }
     Column(
-        Modifier.fillMaxWidth().glass(RoundedCornerShape(26.dp)).clickable(onClick = onClick).padding(18.dp)
+        Modifier.fillMaxWidth().clip(shape).background(CardColor).border(1.dp, Aura.Stroke, shape).clickable(onClick = onClick)
     ) {
-        SourceLine(story)
-        Spacer(Modifier.height(10.dp))
-        Text(story.title, color = Aura.Ink, fontSize = 21.sp, lineHeight = 27.sp, fontFamily = Aura.Sans, maxLines = 4, overflow = TextOverflow.Ellipsis)
+        Box(Modifier.fillMaxWidth().height(imageHeight)) {
+            NetImage(story.imageUrl!!, targetWidthPx = widthPx, contentDescription = null, fallbackUrl = story.imageFallback)
+            // Fade the photo into the card: clear at the top, solid behind the headline.
+            Box(
+                Modifier.fillMaxSize().background(
+                    Brush.verticalGradient(
+                        0f to Color.Transparent,
+                        0.35f to CardColor.copy(alpha = 0.15f),
+                        0.7f to CardColor.copy(alpha = 0.85f),
+                        1f to CardColor,
+                    )
+                )
+            )
+            Column(Modifier.align(Alignment.BottomStart).padding(start = 18.dp, end = 18.dp, bottom = 2.dp)) {
+                SourceLine(story)
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    story.title, color = Color.White, fontSize = titleSize.sp, lineHeight = (titleSize * 1.28f).sp,
+                    fontFamily = Aura.Sans, fontWeight = FontWeight.Medium, maxLines = 3, overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        story.summary?.let {
+            Text(
+                it, color = Aura.InkDim, fontSize = 14.sp, lineHeight = 20.sp, fontFamily = Aura.Sans,
+                maxLines = 2, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 6.dp),
+            )
+        }
+        Spacer(Modifier.height(16.dp))
     }
 }
 
 @Composable
-private fun StoryRow(story: NewsStory, onClick: () -> Unit) {
+private fun TextCard(story: NewsStory, titleSize: Int, onClick: () -> Unit) {
     Column(
         Modifier.fillMaxWidth().glass(RoundedCornerShape(22.dp), fill = Color(0x12FFFFFF)).clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 14.dp)
     ) {
         SourceLine(story)
         Spacer(Modifier.height(6.dp))
-        Text(story.title, color = Aura.Ink, fontSize = 16.sp, lineHeight = 22.sp, fontFamily = Aura.Sans, maxLines = 3, overflow = TextOverflow.Ellipsis)
+        Text(story.title, color = Aura.Ink, fontSize = titleSize.sp, lineHeight = (titleSize * 1.35f).sp, fontFamily = Aura.Sans, maxLines = 3, overflow = TextOverflow.Ellipsis)
+        story.summary?.let {
+            Spacer(Modifier.height(4.dp))
+            Text(it, color = Aura.InkDim, fontSize = 14.sp, lineHeight = 19.sp, fontFamily = Aura.Sans, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
     }
 }
 

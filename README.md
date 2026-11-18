@@ -117,7 +117,11 @@ Swipe **right** on the home screen and the feed slides in from the left, like th
 - **Brief me**, where Gemini sums up the current headlines in four bullets
 - topic tabs: Top stories, World, Local & national, Business, Technology, Science, Health, Sports and Entertainment
 
-Headlines come from Google News' public feeds for your phone's language and region, and tapping one opens the article. Swipe left or press Back to close it. Swipe left from home still opens the app drawer.
+Each story is a **picture card**: the article's photo fades down into the headline and a short description. On English-language phones, stories come from publishers' official RSS feeds, which include a lead image and summary for every story:
+- BBC News, The New York Times and The Guardian for every topic
+- Ars Technica and The Verge as well for Technology
+
+Feeds are merged newest first, with duplicates removed. Photos are cached on the phone and downsized to fit, and NYT pictures use a lighter landscape crop. On other languages, or if those feeds fail, the feed falls back to Google News headlines without pictures. Tapping a story opens the article. Swipe left or press Back to close it. Swipe left from home still opens the app drawer.
 
 ### Notifications & Quick Settings
 Swipe down anywhere on the home screen: **one finger** opens notifications and **two fingers** open Quick Settings. AURA first tries the same system call other launchers use. If Android blocks it, AURA asks once whether to turn on **AURA gestures** in Accessibility. That service only opens those two panels, and it reads nothing on your screen.

@@ -335,9 +335,26 @@ class ScreenshotTest {
     @Test
     fun newsFeed() {
         val now = java.time.Instant.now()
+        // Synthetic "photos" so the screenshot shows the banner fade without real images.
+        fun photo(url: String, top: Int, bottom: Int) {
+            val bmp = android.graphics.Bitmap.createBitmap(800, 450, android.graphics.Bitmap.Config.ARGB_8888)
+            val c = android.graphics.Canvas(bmp)
+            c.drawPaint(android.graphics.Paint().apply {
+                shader = android.graphics.LinearGradient(0f, 0f, 800f, 450f, top, bottom, android.graphics.Shader.TileMode.CLAMP)
+            })
+            val sun = android.graphics.Paint().apply { color = 0xFFFFE2A8.toInt(); isAntiAlias = true }
+            c.drawCircle(620f, 140f, 70f, sun)
+            val hill = android.graphics.Paint().apply { color = 0xFF2E4A3A.toInt(); isAntiAlias = true }
+            c.drawOval(-200f, 300f, 1000f, 700f, hill)
+            com.aura.launcher.ui.NetImages.put(url, bmp)
+        }
+        photo("test://park", 0xFF6FA8DC.toInt(), 0xFFF6C38B.toInt())
+        photo("test://pump", 0xFF4B6584.toInt(), 0xFFA5B1C2.toInt())
         val stories = listOf(
-            com.aura.launcher.data.NewsStory("City opens a new riverside park with miles of trails", "Example Times", null, "https://example.com/1", now.minusSeconds(1800)),
-            com.aura.launcher.data.NewsStory("Researchers unveil a quieter, more efficient heat pump", "Example Science", null, "https://example.com/2", now.minusSeconds(3 * 3600)),
+            com.aura.launcher.data.NewsStory("City opens a new riverside park with miles of trails", "Example Times", null, "https://example.com/1", now.minusSeconds(1800),
+                summary = "The 40-acre park links three neighborhoods with walking and cycling paths along the water.", imageUrl = "test://park"),
+            com.aura.launcher.data.NewsStory("Researchers unveil a quieter, more efficient heat pump", "Example Science", null, "https://example.com/2", now.minusSeconds(3 * 3600),
+                summary = "Early tests show it uses a third less power than current models.", imageUrl = "test://pump"),
             com.aura.launcher.data.NewsStory("Local team clinches playoff spot in overtime thriller", "Example Sports", null, "https://example.com/3", now.minusSeconds(5 * 3600)),
             com.aura.launcher.data.NewsStory("New phone update brings longer battery life", "Example Tech", null, "https://example.com/4", now.minusSeconds(26 * 3600)),
         )
