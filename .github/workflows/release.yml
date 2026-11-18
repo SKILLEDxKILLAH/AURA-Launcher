@@ -1,7 +1,8 @@
 name: Release
 
-# Pushing a tag like v1.0.0 publishes a GitHub release with the APK, its checksum and the
-# Gemini setup guide.
+# Publishes a GitHub release with the APK, its checksum and the Gemini setup guide, either
+# when a tag like v1.0.0 is pushed or when run by hand (Actions → Release → Run workflow),
+# which creates the tag on the current commit.
 #
 # The APK is the signed build stored on the `release-assets` branch, so released versions
 # keep the same signing key (and Google sign-in SHA-1) without the key ever leaving the
@@ -10,6 +11,11 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, without the v (for example 1.0.0)"
+        required: true
 
 permissions:
   contents: write
@@ -17,13 +23,15 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Use the signed APK for this version, if provided
         id: signed
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${TAG#v}"
           APK="AURA-Launcher-${VERSION}.apk"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "apk=$APK" >> "$GITHUB_OUTPUT"
@@ -67,9 +75,10 @@ jobs:
         run: |
           APK="${{ steps.signed.outputs.apk }}"
           sha256sum "$APK" > "$APK.sha256"
-          NOTES="docs/release-notes/${GITHUB_REF_NAME}.md"
+          NOTES="docs/release-notes/${TAG}.md"
           [ -f "$NOTES" ] || NOTES=/dev/null
-          gh release create "$GITHUB_REF_NAME" "$APK" "$APK.sha256" docs/GEMINI_SETUP.md \
+          gh release create "$TAG" "$APK" "$APK.sha256" docs/GEMINI_SETUP.md \
+            --target "$GITHUB_SHA" \
             --title "AURA Launcher ${{ steps.signed.outputs.version }}" \
             --notes-file "$NOTES" \
             --latest
