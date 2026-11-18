@@ -39,18 +39,8 @@ Gemini runs **inside AURA**. It never opens the Gemini app. Tap the Gemini card,
   | `web_search`, `open_url`, `open_camera` | What they say |
   | `get_device_status` | Reads battery, charging, network, ringer and time |
 
-#### One-time Google Cloud setup (developer)
-Google sign-in calls the Gemini API with OAuth. The developer registers it once:
-
-1. In [Google Cloud console](https://console.cloud.google.com), create or pick a project and **enable "Generative Language API"**.
-2. Go to **Google Auth Platform → Branding** and fill in an app name and email. Under **Audience**, choose **External**, publishing status **Testing**, and add every Gmail that will sign in under **Test users**.
-3. Go to **Clients → Create client → Android**:
-   - Package name: `com.aura.launcher`
-   - SHA-1: shown in **AURA settings → Google setup** (tap to copy). For builds signed with `keystore/aura-signing.keystore` it is
-     `21:5E:10:55:71:4E:D8:77:73:F0:3C:85:73:0C:10:1A:FE:B4:96:D6`.
-4. On the phone, tap **Continue with Google**. Google shows an "unverified app" notice while the project is in Testing; tap **Continue**.
-
-Requested scopes: `generative-language.retriever` and `cloud-platform` (the pair Google documents for user-credential access to the Gemini API), plus `userinfo.email` to show who is signed in.
+#### Setting up Gemini
+Follow **[docs/GEMINI_SETUP.md](docs/GEMINI_SETUP.md)**. It covers the one-time Google Cloud setup for **Continue with Google**, the quicker API-key option, models and thinking levels, and fixes for common errors.
 
 > Usage counts against your Cloud project's Gemini API quota (free tier, or billing if enabled). It does **not** use a consumer Gemini / Google One AI subscription, because Google doesn't let third-party apps use those.
 
@@ -131,6 +121,9 @@ Swipe down anywhere on the home screen: **one finger** opens notifications and *
 ## Requirements
 - **Android 17 (API 37) only.** `minSdk` and `targetSdk` are both 37.
 - Google Play services (for Google sign-in).
+
+## Install
+Download the APK from the **[latest release](https://github.com/SKILLEDxKILLAH/AURA-Launcher/releases/latest)** and open it on your Android 17 phone. Then press Home and choose **AURA**, or go to **Settings → Set AURA as your home app**. To use Gemini, see [docs/GEMINI_SETUP.md](docs/GEMINI_SETUP.md).
 
 ## Build
 

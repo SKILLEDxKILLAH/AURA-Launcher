@@ -208,7 +208,8 @@ fun SettingsScreen(
         }
 
         Group("About") {
-            Text("AURA Launcher 1.10 · Built for Android 17", color = Aura.InkDim, fontSize = 14.sp, modifier = Modifier.padding(6.dp))
+            val version = remember { runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "" }
+            Text("AURA Launcher $version · Built for Android 17", color = Aura.InkDim, fontSize = 14.sp, modifier = Modifier.padding(6.dp))
             Text("Tips: swipe left for apps · swipe right for your news feed · swipe down for notifications (two fingers: Quick Settings) · press and hold for wallpaper & settings · drag the letters on the right · tap the mic to talk to Gemini · tap the top-left text to edit it, long-press it for these settings.",
                 color = Aura.InkFaint, fontSize = 13.sp, modifier = Modifier.padding(6.dp))
         }

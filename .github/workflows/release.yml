@@ -1,0 +1,75 @@
+name: Release
+
+# Pushing a tag like v1.0.0 publishes a GitHub release with the APK, its checksum and the
+# Gemini setup guide.
+#
+# The APK is the signed build stored on the `release-assets` branch, so released versions
+# keep the same signing key (and Google sign-in SHA-1) without the key ever leaving the
+# maintainer's machine. If no signed build is there, CI builds one with its own debug key.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use the signed APK for this version, if provided
+        id: signed
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          APK="AURA-Launcher-${VERSION}.apk"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "apk=$APK" >> "$GITHUB_OUTPUT"
+          if git fetch --depth=1 origin release-assets && git cat-file -e "FETCH_HEAD:$APK" 2>/dev/null; then
+            git show "FETCH_HEAD:$APK" > "$APK"
+            git show "FETCH_HEAD:$APK.sha256" > expected.sha256
+            sha256sum -c expected.sha256
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.signed.outputs.found != 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - if: steps.signed.outputs.found != 'true'
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "platforms;android-37.0 build-tools;37.0.0 platform-tools"
+
+      - if: steps.signed.outputs.found != 'true'
+        name: Build APK (debug-signed fallback)
+        run: |
+          ./gradlew assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk "${{ steps.signed.outputs.apk }}"
+
+      - name: Check the APK's version matches the tag
+        run: |
+          AAPT=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 2>/dev/null | tail -1 || true)
+          if [ -n "$AAPT" ]; then
+            "$AAPT" dump badging "${{ steps.signed.outputs.apk }}" | head -1
+            "$AAPT" dump badging "${{ steps.signed.outputs.apk }}" | head -1 | grep -q "versionName='${{ steps.signed.outputs.version }}'"
+          fi
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK="${{ steps.signed.outputs.apk }}"
+          sha256sum "$APK" > "$APK.sha256"
+          NOTES="docs/release-notes/${GITHUB_REF_NAME}.md"
+          [ -f "$NOTES" ] || NOTES=/dev/null
+          gh release create "$GITHUB_REF_NAME" "$APK" "$APK.sha256" docs/GEMINI_SETUP.md \
+            --title "AURA Launcher ${{ steps.signed.outputs.version }}" \
+            --notes-file "$NOTES" \
+            --latest
