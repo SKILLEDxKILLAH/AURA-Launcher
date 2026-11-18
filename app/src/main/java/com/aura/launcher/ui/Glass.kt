@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import com.aura.launcher.ui.theme.Aura
 
 /** Frosted glass surface: translucent fill and a hairline light edge. */
+@androidx.compose.runtime.Composable
 fun Modifier.glass(shape: Shape, fill: Color = Aura.Glass, stroke: Color = Aura.Stroke, strokeWidth: Dp = 1.dp) =
     this.clip(shape).background(fill).border(strokeWidth, stroke, shape)
 

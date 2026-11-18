@@ -14,54 +14,56 @@ import kotlin.math.hypot
 
 /**
  * AURA's signature backdrop: charcoal sky, a diagonal shaft of warm light, and soft
- * sand-dune silhouettes with glowing ridges, fading to warm beige at the bottom.
+ * sand-dune silhouettes with glowing ridges, fading to warm beige at the bottom. Colors come
+ * from the current theme (dark, light or wallpaper-based).
  */
 @Composable
 fun AuraBackdrop(modifier: Modifier = Modifier, drift: Float = 0f) {
+    val c = com.aura.launcher.ui.theme.Aura.colors.backdrop
     Canvas(modifier.fillMaxSize()) {
         val w = size.width
         val h = size.height
 
         drawRect(
             Brush.verticalGradient(
-                0f to Color(0xFF2F2D2C),
-                0.38f to Color(0xFF3B3836),
-                0.7f to Color(0xFF554D47),
-                1f to Color(0xFFC9B6A1),
+                0f to c.sky[0],
+                0.38f to c.sky[1],
+                0.7f to c.sky[2],
+                1f to c.sky[3],
             )
         )
 
         // Diagonal light shafts from the upper right.
-        lightShaft(Offset(w * 0.78f, h * 0.18f), Offset(-0.62f, 0.78f), w * 0.9f, Color(0x52E9D8C4))
-        lightShaft(Offset(w * 0.98f, h * 0.36f), Offset(-0.7f, 0.72f), w * 0.5f, Color(0x2EF2E4D2))
+        lightShaft(Offset(w * 0.78f, h * 0.18f), Offset(-0.62f, 0.78f), w * 0.9f, c.shafts[0])
+        lightShaft(Offset(w * 0.98f, h * 0.36f), Offset(-0.7f, 0.72f), w * 0.5f, c.shafts[1])
 
         val d = drift * h * 0.02f
 
         // Back dune.
         dune(
             Offset(0f, h * 0.47f + d), Offset(w * 0.3f, h * 0.41f + d), Offset(w * 0.62f, h * 0.48f + d), Offset(w, h * 0.38f + d),
-            Brush.verticalGradient(listOf(Color(0xFF45403C), Color(0xFF3A3532), Color(0xFF6A5E54)), h * 0.38f, h),
-            Color(0x66EADBC8),
+            Brush.verticalGradient(c.dunes[0], h * 0.38f, h),
+            c.ridges[0],
         )
 
         // Middle dune sweeping up to the right.
         dune(
             Offset(0f, h * 0.66f + d), Offset(w * 0.22f, h * 0.6f + d), Offset(w * 0.5f, h * 0.53f + d), Offset(w, h * 0.5f + d),
-            Brush.verticalGradient(listOf(Color(0xFF524942), Color(0xFF433C37), Color(0xFF8C7B6C)), h * 0.5f, h),
-            Color(0x80F2E2CE),
+            Brush.verticalGradient(c.dunes[1], h * 0.5f, h),
+            c.ridges[1],
         )
 
         // Front dune, lighter and warmer.
         dune(
             Offset(0f, h * 0.84f + d), Offset(w * 0.3f, h * 0.7f + d), Offset(w * 0.66f, h * 0.72f + d), Offset(w, h * 0.8f + d),
-            Brush.verticalGradient(listOf(Color(0xFF6D6159), Color(0xFFA8957F), Color(0xFFD9C6B0)), h * 0.7f, h),
-            Color(0x66FFF3E4),
+            Brush.verticalGradient(c.dunes[2], h * 0.7f, h),
+            c.ridges[2],
         )
 
         // Gentle vignette for legibility of white text.
         drawRect(
             Brush.radialGradient(
-                listOf(Color.Transparent, Color(0x55000000)),
+                listOf(Color.Transparent, c.vignette),
                 center = Offset(w / 2, h * 0.42f),
                 radius = hypot(w, h) * 0.7f,
             )

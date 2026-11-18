@@ -21,7 +21,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -41,13 +44,15 @@ import com.aura.launcher.ui.theme.Aura
 
 @Composable
 fun AppIcon(entry: AppEntry, repo: AppRepository, size: Dp, modifier: Modifier = Modifier) {
-    val bmp by produceState(repo.cachedIcon(entry.key), entry.key) { value = repo.icon(entry) }
+    val generation by repo.iconGeneration.collectAsState()
+    val bmp by produceState(repo.cachedIcon(entry.key), entry.key, generation) { value = repo.icon(entry) }
     IconImage(bmp, size, modifier)
 }
 
 @Composable
 fun PackageIcon(pkg: String, repo: AppRepository, size: Dp, modifier: Modifier = Modifier) {
-    val bmp by produceState(repo.cachedIcon("pkg:$pkg"), pkg) { value = repo.packageIcon(pkg) }
+    val generation by repo.iconGeneration.collectAsState()
+    val bmp by produceState(repo.cachedIcon("pkg:$pkg"), pkg, generation) { value = repo.packageIcon(pkg) }
     IconImage(bmp, size, modifier)
 }
 
@@ -153,24 +158,40 @@ fun SparkleFab(onClick: () -> Unit, onLongClick: () -> Unit, modifier: Modifier 
 }
 
 @Composable
-fun Dock(items: List<DockItem>, repo: AppRepository, onLaunch: (DockItem) -> Unit, modifier: Modifier = Modifier) {
+fun Dock(
+    items: List<DockItem>,
+    repo: AppRepository,
+    onLaunch: (DockItem) -> Unit,
+    modifier: Modifier = Modifier,
+    entryFor: (DockItem) -> AppEntry? = { null },
+    menuActions: AppMenuActions? = null,
+) {
     Row(
         modifier.fillMaxWidth().padding(horizontal = 24.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         items.forEach { item ->
-            Box(
-                Modifier.size(62.dp).clip(CircleShape)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = androidx.compose.material3.ripple(bounded = true),
-                        onClickLabel = item.label,
-                        role = Role.Button,
-                        onClick = { onLaunch(item) },
-                    ),
-                contentAlignment = Alignment.Center,
-            ) { PackageIcon(item.packageName, repo, 58.dp) }
+            var open by remember { mutableStateOf(false) }
+            val entry = if (menuActions != null) entryFor(item) else null
+            Box {
+                Box(
+                    Modifier.size(62.dp).clip(CircleShape)
+                        .combinedClickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = androidx.compose.material3.ripple(bounded = true),
+                            onClickLabel = item.label,
+                            role = Role.Button,
+                            onLongClickLabel = if (entry != null) "Shortcuts and options" else null,
+                            onLongClick = if (entry != null) ({ open = true }) else null,
+                            onClick = { onLaunch(item) },
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) { PackageIcon(item.packageName, repo, 58.dp) }
+                if (entry != null && menuActions != null) {
+                    AppMenu(entry, repo, expanded = open, onDismiss = { open = false }, actions = menuActions)
+                }
+            }
         }
     }
 }

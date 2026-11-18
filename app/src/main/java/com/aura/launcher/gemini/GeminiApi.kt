@@ -2,6 +2,8 @@ package com.aura.launcher.gemini
 
 import com.aura.launcher.data.ThinkingLevel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
+import org.json.JSONArray
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -14,8 +16,14 @@ import java.net.URLEncoder
 sealed interface GeminiCredential {
     data class ApiKey(val key: String) : GeminiCredential
 
-    /** Google-account OAuth; [token] returns a fresh access token, refreshing when asked. */
-    class GoogleAccount(val token: suspend (forceRefresh: Boolean) -> String) : GeminiCredential
+    /**
+     * Google-account OAuth; [token] returns a fresh access token, refreshing when asked.
+     * [widenScopes] is called if Google says the token's access is too narrow; true = retry.
+     */
+    class GoogleAccount(
+        val widenScopes: suspend () -> Boolean = { false },
+        val token: suspend (forceRefresh: Boolean) -> String,
+    ) : GeminiCredential
 }
 
 /** A non-2xx Gemini API response. [message] is user-friendly; [raw] is Google's own text. */
@@ -79,15 +87,18 @@ object GeminiApi {
         model: String,
         body: JSONObject,
         level: ThinkingLevel,
+        onChunk: (suspend (JSONObject) -> Unit)? = null,
     ): ThinkingResponse {
         val key = "$model|$level"
+        suspend fun send(request: JSONObject) =
+            if (onChunk == null) generate(credential, model, request) else stream(credential, model, request, onChunk)
         if (model in noThinkingConfig) {
-            return ThinkingResponse(generate(credential, model, withThinking(body, null)), ThinkingLevel.AUTO, unsupportedNote(level))
+            return ThinkingResponse(send(withThinking(body, null)), ThinkingLevel.AUTO, unsupportedNote(level))
         }
         val ladder = acceptedLevel[key]?.let { listOf(it) } ?: fallbacks(level)
         for (attempt in ladder) {
             try {
-                val json = generate(credential, model, withThinking(body, thinkingConfig(model, attempt)))
+                val json = send(withThinking(body, thinkingConfig(model, attempt)))
                 acceptedLevel[key] = attempt
                 val note = when {
                     attempt == level -> null
@@ -100,7 +111,7 @@ object GeminiApi {
             }
         }
         // Every thinking setting was rejected: this model takes none at all.
-        val json = generate(credential, model, withThinking(body, null))
+        val json = send(withThinking(body, null))
         noThinkingConfig += model
         return ThinkingResponse(json, ThinkingLevel.AUTO, unsupportedNote(level))
     }
@@ -122,6 +133,70 @@ object GeminiApi {
 
     suspend fun generate(credential: GeminiCredential, model: String, body: JSONObject): JSONObject =
         call(credential, "POST", "models/${URLEncoder.encode(model, "UTF-8")}:generateContent", body)
+
+    /**
+     * streamGenerateContent: [onChunk] gets each piece as Gemini writes it, so replies appear word by
+     * word. Returns the whole response put back together in generateContent's shape, with thought
+     * signatures kept, so the agent and the conversation history work exactly as without streaming.
+     */
+    suspend fun stream(
+        credential: GeminiCredential,
+        model: String,
+        body: JSONObject,
+        onChunk: suspend (JSONObject) -> Unit,
+    ): JSONObject {
+        val path = "models/${URLEncoder.encode(model, "UTF-8")}:streamGenerateContent?alt=sse"
+        val chunks = mutableListOf<JSONObject>()
+        authorized(credential) { header, value ->
+            chunks.clear()
+            rawStream(path, body, header, value) { chunk ->
+                chunks += chunk
+                onChunk(chunk)
+            }
+        }
+        return assemble(chunks)
+    }
+
+    /** Joins streamed chunks into one response; neighbouring text pieces of the same kind are merged. */
+    internal fun assemble(chunks: List<JSONObject>): JSONObject {
+        val parts = mutableListOf<JSONObject>()
+        var role = "model"
+        var finishReason: String? = null
+        var promptFeedback: JSONObject? = null
+        var sawCandidate = false
+        for (chunk in chunks) {
+            chunk.optJSONObject("promptFeedback")?.let { promptFeedback = it }
+            val candidate = chunk.optJSONArray("candidates")?.optJSONObject(0) ?: continue
+            sawCandidate = true
+            candidate.optString("finishReason").takeIf { it.isNotEmpty() }?.let { finishReason = it }
+            val content = candidate.optJSONObject("content") ?: continue
+            content.optString("role").takeIf { it.isNotEmpty() }?.let { role = it }
+            val ps = content.optJSONArray("parts") ?: continue
+            for (i in 0 until ps.length()) {
+                val part = JSONObject(ps.getJSONObject(i).toString())
+                val last = parts.lastOrNull()
+                if (last != null && isPlainText(part) && isPlainText(last) &&
+                    part.optBoolean("thought") == last.optBoolean("thought") &&
+                    !(last.has("thoughtSignature") && part.optString("text").isNotEmpty())
+                ) {
+                    last.put("text", last.optString("text") + part.optString("text"))
+                    part.optString("thoughtSignature").takeIf { it.isNotEmpty() }?.let { last.put("thoughtSignature", it) }
+                } else {
+                    parts += part
+                }
+            }
+        }
+        val out = JSONObject()
+        promptFeedback?.let { out.put("promptFeedback", it) }
+        if (sawCandidate) {
+            val candidate = JSONObject().put("content", JSONObject().put("role", role).put("parts", JSONArray(parts)))
+            finishReason?.let { candidate.put("finishReason", it) }
+            out.put("candidates", JSONArray().put(candidate))
+        }
+        return out
+    }
+
+    private fun isPlainText(part: JSONObject) = part.has("text") && !part.has("functionCall") && !part.has("functionResponse")
 
     /**
      * Gemini models this account can use for chat with tools, newest first. Filters out
@@ -170,43 +245,102 @@ object GeminiApi {
     }
 
     suspend fun call(credential: GeminiCredential, method: String, path: String, body: JSONObject?): JSONObject =
+        authorized(credential) { header, value -> raw(method, path, body, header, value) }
+
+    /** Runs [request] with the credential's auth header; a Google token that expired is refreshed once. */
+    private suspend fun <T> authorized(credential: GeminiCredential, request: suspend (String, String) -> T): T =
         when (credential) {
-            is GeminiCredential.ApiKey -> raw(method, path, body, "x-goog-api-key", credential.key)
+            is GeminiCredential.ApiKey -> request("x-goog-api-key", credential.key)
             is GeminiCredential.GoogleAccount -> try {
-                raw(method, path, body, "Authorization", "Bearer " + credential.token(false))
+                request("Authorization", "Bearer " + credential.token(false))
             } catch (e: GeminiHttpException) {
-                if (e.code != 401) throw e
-                // Token expired or was revoked: refresh silently and retry once.
-                raw(method, path, body, "Authorization", "Bearer " + credential.token(true))
+                when {
+                    // Token expired or was revoked: refresh silently and retry once.
+                    e.code == 401 -> request("Authorization", "Bearer " + credential.token(true))
+                    // The narrow Gemini-only access wasn't enough: ask for the broader scope once.
+                    e.code == 403 && isScopeProblem(e) && credential.widenScopes() ->
+                        request("Authorization", "Bearer " + credential.token(true))
+                    else -> throw e
+                }
             }
         }
 
+    private fun open(method: String, path: String, body: JSONObject?, header: String, value: String): HttpURLConnection {
+        val conn = (URL(baseUrl + path).openConnection() as HttpURLConnection).apply {
+            requestMethod = method
+            connectTimeout = 15_000
+            readTimeout = 60_000
+            setRequestProperty(header, value)
+            if (body != null) {
+                doOutput = true
+                setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            }
+        }
+        body?.let { b -> conn.outputStream.use { it.write(b.toString().toByteArray()) } }
+        return conn
+    }
+
+    private fun failure(conn: HttpURLConnection, code: Int): GeminiHttpException {
+        val text = conn.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+        val msg = runCatching { JSONObject(text).getJSONObject("error").getString("message") }.getOrNull() ?: text.take(300)
+        return GeminiHttpException(code, friendly(code, msg), msg)
+    }
+
     private suspend fun raw(method: String, path: String, body: JSONObject?, header: String, value: String): JSONObject =
         withContext(Dispatchers.IO) {
-            val conn = (URL(baseUrl + path).openConnection() as HttpURLConnection).apply {
-                requestMethod = method
-                connectTimeout = 15_000
-                readTimeout = 60_000
-                setRequestProperty(header, value)
-                if (body != null) {
-                    doOutput = true
-                    setRequestProperty("Content-Type", "application/json; charset=utf-8")
-                }
-            }
+            val conn = open(method, path, body, header, value)
             try {
-                body?.let { b -> conn.outputStream.use { it.write(b.toString().toByteArray()) } }
                 val code = conn.responseCode
-                val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-                val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-                if (code !in 200..299) {
-                    val msg = runCatching { JSONObject(text).getJSONObject("error").getString("message") }.getOrNull() ?: text.take(300)
-                    throw GeminiHttpException(code, friendly(code, msg), msg)
-                }
-                JSONObject(text)
+                if (code !in 200..299) throw failure(conn, code)
+                JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
             } finally {
                 conn.disconnect()
             }
         }
+
+    /** Reads a server-sent-events response, handing each `data:` JSON object to [onEvent]. */
+    private suspend fun rawStream(
+        path: String,
+        body: JSONObject,
+        header: String,
+        value: String,
+        onEvent: suspend (JSONObject) -> Unit,
+    ) = withContext(Dispatchers.IO) {
+        val conn = open("POST", path, body, header, value)
+        try {
+            val code = conn.responseCode
+            if (code !in 200..299) throw failure(conn, code)
+            conn.inputStream.bufferedReader().use { reader ->
+                val data = StringBuilder()
+                suspend fun flush() {
+                    if (data.isNotEmpty()) {
+                        val event = JSONObject(data.toString())
+                        data.setLength(0)
+                        event.optJSONObject("error")?.let { err ->
+                            val msg = err.optString("message")
+                            val c = err.optInt("code", 500)
+                            throw GeminiHttpException(c, friendly(c, msg), msg)
+                        }
+                        onEvent(event)
+                    }
+                }
+                while (true) {
+                    ensureActive()
+                    val line = reader.readLine() ?: break
+                    when {
+                        line.startsWith("data:") -> data.append(line.removePrefix("data:").trimStart())
+                        line.isBlank() -> flush()
+                    }
+                }
+                flush()
+            }
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    internal fun isScopeProblem(e: GeminiHttpException) =
+        e.raw.contains("ACCESS_TOKEN_SCOPE_INSUFFICIENT", true) || e.raw.contains("insufficient authentication scopes", true)
 
     private fun friendly(code: Int, msg: String): String = when {
         code == 401 -> "Your Google sign-in expired — sign in again"

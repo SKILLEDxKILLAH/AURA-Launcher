@@ -21,6 +21,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -33,7 +35,6 @@ import com.aura.launcher.ui.theme.Aura
 import kotlinx.coroutines.delay
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 data class HomeActions(
     val openGeminiSheet: () -> Unit,
@@ -57,11 +58,16 @@ fun HomeScreen(
     actions: HomeActions,
     modifier: Modifier = Modifier,
     topLine: TopLineState = TopLineState.Default,
+    dockEntry: (DockItem) -> com.aura.launcher.data.AppEntry? = { null },
+    menuActions: AppMenuActions? = null,
+    widgets: com.aura.launcher.data.AuraWidgets? = null,
 ) {
+    val hasWidgets = widgets != null && widgets.placed.isNotEmpty()
     Column(modifier.fillMaxSize().systemBarsPadding()) {
         AuraTopBar(repo, onGoogle = actions.openGoogle, topLine = topLine, editable = true)
 
-        Spacer(Modifier.weight(0.75f))
+        // With widgets, the clock moves up a little to make room for them.
+        if (hasWidgets) Spacer(Modifier.height(28.dp)) else Spacer(Modifier.weight(0.75f))
         ClockBlock(
             weather = weather.takeIf { showWeather },
             weatherHint = if (showWeather && weather == null && weatherNeedsPermission) "Tap for local weather" else null,
@@ -69,7 +75,13 @@ fun HomeScreen(
             onDate = actions.openCalendar,
             onWeather = actions.onWeather,
         )
-        Spacer(Modifier.weight(3f))
+        if (hasWidgets) {
+            Spacer(Modifier.height(22.dp))
+            WidgetArea(widgets!!, Modifier.weight(3f, fill = false).clipToBounds())
+            Spacer(Modifier.weight(1f).heightIn(min = 16.dp))
+        } else {
+            Spacer(Modifier.weight(3f))
+        }
 
         GeminiCard(
             onOpen = actions.openGeminiSheet,
@@ -78,7 +90,7 @@ fun HomeScreen(
             modifier = Modifier.padding(horizontal = 16.dp),
         )
         Spacer(Modifier.height(36.dp))
-        Dock(dock, repo, actions.launchDock, Modifier.padding(bottom = 18.dp))
+        Dock(dock, repo, actions.launchDock, Modifier.padding(bottom = 18.dp), entryFor = dockEntry, menuActions = menuActions)
     }
 }
 
@@ -100,8 +112,9 @@ private fun ClockBlock(
     }
     val is24 = DateFormat.is24HourFormat(context)
     val time = now.format(DateTimeFormatter.ofPattern(if (is24) "HH:mm" else "h:mm"))
-    val datePattern = DateFormat.getBestDateTimePattern(Locale.getDefault(), "EEEMMMd")
-    val date = now.format(DateTimeFormatter.ofPattern(datePattern))
+    val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
+    val datePattern = DateFormat.getBestDateTimePattern(locale, "EEEMMMd")
+    val date = now.format(DateTimeFormatter.ofPattern(datePattern, locale))
 
     Column(Modifier.fillMaxWidth().padding(horizontal = 52.dp)) {
         Text(

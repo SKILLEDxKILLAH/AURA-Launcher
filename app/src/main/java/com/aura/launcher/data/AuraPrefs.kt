@@ -16,6 +16,9 @@ enum class ThinkingLevel(val label: String, val blurb: String) {
     HIGH("High", "Deepest reasoning, slowest replies"),
 }
 
+/** How the app drawer lists apps. */
+enum class DrawerLayout(val label: String) { LIST("List"), COMPACT("Compact"), GRID("Grid") }
+
 /** What sits at the top-left of the home screen. */
 enum class TopLineMode { LABEL, WEATHER }
 
@@ -25,6 +28,16 @@ enum class GeminiAuthMode { GOOGLE_ACCOUNT, API_KEY }
 /** Small observable preference store. Every property is Compose state, so UI recomposes on change. */
 class AuraPrefs(context: Context) {
     private val sp = context.getSharedPreferences("aura_prefs", Context.MODE_PRIVATE)
+    /** Kept apart from settings so it can be left out of cloud backup. */
+    private val secrets = context.getSharedPreferences("aura_secrets", Context.MODE_PRIVATE)
+
+    init {
+        // Older versions kept the API key with the settings: move it.
+        sp.getString(K_API_KEY, null)?.let { old ->
+            if (secrets.getString(K_API_KEY, null) == null) secrets.edit { putString(K_API_KEY, old) }
+            sp.edit { remove(K_API_KEY) }
+        }
+    }
 
     var useAuraBackdrop by mutableStateOf(sp.getBoolean(K_BACKDROP, true))
         private set
@@ -42,7 +55,7 @@ class AuraPrefs(context: Context) {
         private set
     var accountName by mutableStateOf(sp.getString(K_ACCOUNT_NAME, null))
         private set
-    var apiKey by mutableStateOf(sp.getString(K_API_KEY, "") ?: "")
+    var apiKey by mutableStateOf(secrets.getString(K_API_KEY, "") ?: "")
         private set
     var model by mutableStateOf(sp.getString(K_MODEL, DEFAULT_MODEL) ?: DEFAULT_MODEL)
         private set
@@ -66,11 +79,53 @@ class AuraPrefs(context: Context) {
     var favorites by mutableStateOf(sp.getStringSet(K_FAVORITES, emptySet())?.toSet() ?: emptySet())
         private set
 
+    // ---- App drawer ----
+    var drawerLayout by mutableStateOf(
+        runCatching { DrawerLayout.valueOf(sp.getString(K_DRAWER_LAYOUT, null) ?: "") }.getOrDefault(DrawerLayout.LIST)
+    )
+        private set
+    /** Apps left out of the drawer list and suggestions; still found by search. */
+    var hiddenApps by mutableStateOf(sp.getStringSet(K_HIDDEN, emptySet())?.toSet() ?: emptySet())
+        private set
+    /** Opening the drawer goes straight to typing in search. */
+    var drawerKeyboard by mutableStateOf(sp.getBoolean(K_DRAWER_KEYBOARD, false))
+        private set
+    var drawerTipSeen by mutableStateOf(sp.getBoolean(K_DRAWER_TIP, false))
+        private set
+
+    fun updateDrawerLayout(v: DrawerLayout) { drawerLayout = v; sp.edit { putString(K_DRAWER_LAYOUT, v.name) } }
+    fun toggleHidden(key: String) {
+        hiddenApps = if (key in hiddenApps) hiddenApps - key else hiddenApps + key
+        sp.edit { putStringSet(K_HIDDEN, hiddenApps) }
+    }
+    fun updateDrawerKeyboard(v: Boolean) { drawerKeyboard = v; sp.edit { putBoolean(K_DRAWER_KEYBOARD, v) } }
+    fun markDrawerTipSeen() { drawerTipSeen = true; sp.edit { putBoolean(K_DRAWER_TIP, true) } }
+    fun resetDrawerTip() { drawerTipSeen = false; sp.edit { putBoolean(K_DRAWER_TIP, false) } }
+
+    // ---- Look ----
+    var themeMode by mutableStateOf(
+        runCatching { com.aura.launcher.ui.theme.ThemeMode.valueOf(sp.getString(K_THEME_MODE, null) ?: "") }
+            .getOrDefault(com.aura.launcher.ui.theme.ThemeMode.DARK)
+    )
+        private set
+    var colorSource by mutableStateOf(
+        runCatching { com.aura.launcher.ui.theme.ColorSource.valueOf(sp.getString(K_COLOR_SOURCE, null) ?: "") }
+            .getOrDefault(com.aura.launcher.ui.theme.ColorSource.AURA)
+    )
+        private set
+    /** Single-color app icons tinted to the theme, for apps that provide one (like Pixel's themed icons). */
+    var themedIcons by mutableStateOf(sp.getBoolean(K_THEMED_ICONS, false))
+        private set
+
+    fun updateThemeMode(v: com.aura.launcher.ui.theme.ThemeMode) { themeMode = v; sp.edit { putString(K_THEME_MODE, v.name) } }
+    fun updateColorSource(v: com.aura.launcher.ui.theme.ColorSource) { colorSource = v; sp.edit { putString(K_COLOR_SOURCE, v.name) } }
+    fun updateThemedIcons(v: Boolean) { themedIcons = v; sp.edit { putBoolean(K_THEMED_ICONS, v) } }
+
     fun updateUseAuraBackdrop(v: Boolean) { useAuraBackdrop = v; sp.edit { putBoolean(K_BACKDROP, v) } }
     fun updateShowWeather(v: Boolean) { showWeather = v; sp.edit { putBoolean(K_WEATHER, v) } }
     fun updateFahrenheit(v: Boolean) { fahrenheit = v; sp.edit { putBoolean(K_FAHRENHEIT, v) } }
     fun updateAuthMode(v: GeminiAuthMode) { authMode = v; sp.edit { putString(K_AUTH_MODE, v.name) } }
-    fun updateApiKey(v: String) { apiKey = v.trim(); sp.edit { putString(K_API_KEY, apiKey) } }
+    fun updateApiKey(v: String) { apiKey = v.trim(); secrets.edit { putString(K_API_KEY, apiKey) } }
     fun updateModel(v: String) {
         model = v.trim().ifEmpty { DEFAULT_MODEL }
         sp.edit { putString(K_MODEL, model) }
@@ -123,6 +178,13 @@ class AuraPrefs(context: Context) {
         private const val K_DRAWER_BAR = "drawer_gemini_bar"
         private const val K_DRAWER_BUTTON = "drawer_gemini_button"
         private const val K_TOP_LABEL = "top_label"
+        private const val K_THEME_MODE = "theme_mode"
+        private const val K_DRAWER_LAYOUT = "drawer_layout"
+        private const val K_HIDDEN = "hidden_apps"
+        private const val K_DRAWER_KEYBOARD = "drawer_keyboard"
+        private const val K_DRAWER_TIP = "drawer_tip_seen"
+        private const val K_COLOR_SOURCE = "color_source"
+        private const val K_THEMED_ICONS = "themed_icons"
         const val MAX_LABEL = 40
     }
 }

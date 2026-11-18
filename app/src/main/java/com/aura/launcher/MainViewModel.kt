@@ -42,7 +42,8 @@ import kotlinx.coroutines.launch
 
 enum class ChatRole { USER, GEMINI, ACTION, ERROR, THOUGHT, NOTICE }
 
-data class ChatItem(val role: ChatRole, val text: String, val ok: Boolean = true, val millis: Long = 0)
+/** One line in the Gemini chat. [streaming] is true while Gemini is still writing it. */
+data class ChatItem(val role: ChatRole, val text: String, val ok: Boolean = true, val millis: Long = 0, val streaming: Boolean = false)
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val context get() = getApplication<Application>()
@@ -59,6 +60,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var weatherNeedsPermission by mutableStateOf(!WeatherService.hasPermission(app))
         private set
+
+    /** Home-screen widgets. */
+    val widgets = com.aura.launcher.data.AuraWidgets(app)
+    var widgetPickerOpen by mutableStateOf(false)
+
+    fun addWidget(choice: com.aura.launcher.data.WidgetChoice) {
+        widgetPickerOpen = false
+        viewModelScope.launch { ActivityBridge.activity?.addWidget(choice.info) }
+    }
 
     // Overlays
     private var geminiSheetShown by mutableStateOf(false)
@@ -111,6 +121,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         refreshSuggestions()
     }
 
+    fun launchShortcut(shortcut: com.aura.launcher.data.AppShortcut) {
+        repo.startShortcut(shortcut)
+        resetWhenStopped = true
+    }
+
     fun launchDock(item: DockItem) {
         if (ActivityBridge.start(context, item.intent)) repo.recordPackage(item.packageName)
     }
@@ -150,6 +165,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun onHomeIntent() {
         _resetToHome.tryEmit(Unit)
+        widgetPickerOpen = false
         geminiSheetOpen = false
         settingsOpen = false
     }
@@ -163,6 +179,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun onResumed() {
         checkWallpaperChanged()
+        widgets.pruneMissing()
         refreshSuggestions()
         dock = DockResolver.resolve(context)
         weatherNeedsPermission = !WeatherService.hasPermission(context)
@@ -181,9 +198,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (result == SystemPanels.Result.NEEDS_SETUP && !gestureHintDismissed) gestureSetupNeeded = true
     }
 
+    /**
+     * Google Play requires a separate, explicit disclosure before a non-accessibility app sends
+     * people to turn on its accessibility service. "Turn on" anywhere shows it first.
+     */
+    var gestureDisclosureOpen by mutableStateOf(false)
+
     fun enableGestureService() {
         gestureSetupNeeded = false
+        gestureDisclosureOpen = true
+    }
+
+    fun acceptGestureDisclosure() {
+        gestureDisclosureOpen = false
         ActivityBridge.start(context, Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+    }
+
+    fun declineGestureDisclosure() {
+        gestureDisclosureOpen = false
     }
 
     /** AURA's App info page, where ⋮ → "Allow restricted settings" lives for sideloaded apps. */
@@ -221,6 +253,30 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (!ActivityBridge.start(context, pixelPicker)) {
             ActivityBridge.start(context, Intent.createChooser(Intent(Intent.ACTION_SET_WALLPAPER), "Wallpaper & style"))
         }
+    }
+
+    /** True when the system wallpaper is light enough for dark text (Android's own hint). */
+    var wallpaperIsLight by mutableStateOf(readWallpaperIsLight())
+        private set
+
+    private fun readWallpaperIsLight(): Boolean = runCatching {
+        val colors = WallpaperManager.getInstance(context).getWallpaperColors(WallpaperManager.FLAG_SYSTEM)
+        colors != null && (colors.colorHints and android.app.WallpaperColors.HINT_SUPPORTS_DARK_TEXT) != 0
+    }.getOrDefault(false)
+
+    private val wallpaperColorsListener = WallpaperManager.OnColorsChangedListener { _, which ->
+        if (which and WallpaperManager.FLAG_SYSTEM != 0) wallpaperIsLight = readWallpaperIsLight()
+    }
+
+    init {
+        runCatching {
+            WallpaperManager.getInstance(context).addOnColorsChangedListener(wallpaperColorsListener, android.os.Handler(android.os.Looper.getMainLooper()))
+        }
+    }
+
+    override fun onCleared() {
+        runCatching { WallpaperManager.getInstance(context).removeOnColorsChangedListener(wallpaperColorsListener) }
+        super.onCleared()
     }
 
     private fun checkWallpaperChanged() {
@@ -275,7 +331,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun credential(): GeminiCredential? = when (prefs.authMode) {
         GeminiAuthMode.GOOGLE_ACCOUNT -> if (prefs.accountEmail != null) {
-            GeminiCredential.GoogleAccount { force -> googleAuth.accessToken(force) }
+            GeminiCredential.GoogleAccount(widenScopes = { googleAuth.widenScopes() }) { force -> googleAuth.accessToken(force) }
         } else null
         GeminiAuthMode.API_KEY -> prefs.apiKey.takeIf { it.isNotBlank() }?.let { GeminiCredential.ApiKey(it) }
     }
@@ -295,12 +351,32 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         agentJob?.cancel()
         agentJob = viewModelScope.launch {
             agentBusy = true
+            // Where the thought and reply being written right now sit in the chat, so each new
+            // piece updates them in place instead of adding lines.
+            var liveThought = -1
+            var liveReply = -1
+            fun put(index: Int, item: ChatItem): Int =
+                if (index in chat.indices) { chat[index] = item; index } else { chat += item; chat.lastIndex }
             try {
-                agent.send(text, credential, prefs.model, apps.value.map { it.label }.distinct(), prefs.thinking) { event ->
+                agent.send(text, credential, prefs.model, prefs.thinking) { event ->
                     when (event) {
-                        is AuraAgent.Event.Reply -> chat += ChatItem(ChatRole.GEMINI, event.text)
-                        is AuraAgent.Event.Action -> chat += ChatItem(ChatRole.ACTION, event.label, event.ok)
-                        is AuraAgent.Event.Thought -> chat += ChatItem(ChatRole.THOUGHT, event.summary, millis = event.millis)
+                        is AuraAgent.Event.Partial -> {
+                            if (event.thought.isNotEmpty()) liveThought = put(liveThought, ChatItem(ChatRole.THOUGHT, event.thought, streaming = true))
+                            if (event.reply.isNotEmpty()) liveReply = put(liveReply, ChatItem(ChatRole.GEMINI, event.reply, streaming = true))
+                        }
+                        is AuraAgent.Event.Thought -> {
+                            put(liveThought, ChatItem(ChatRole.THOUGHT, event.summary, millis = event.millis))
+                            liveThought = -1
+                        }
+                        is AuraAgent.Event.Reply -> {
+                            put(liveReply, ChatItem(ChatRole.GEMINI, event.text))
+                            liveReply = -1
+                        }
+                        is AuraAgent.Event.Action -> {
+                            // A step that ended in a tool call: whatever was streamed is now final.
+                            liveThought = -1; liveReply = -1
+                            chat += ChatItem(ChatRole.ACTION, event.label, event.ok)
+                        }
                         is AuraAgent.Event.Notice -> chat += ChatItem(ChatRole.NOTICE, event.text)
                     }
                 }
@@ -313,6 +389,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: Exception) {
                 chat += ChatItem(ChatRole.ERROR, e.message ?: "Something went wrong")
             } finally {
+                // Stopped or failed part-way: keep what was written, but as finished lines.
+                for (i in chat.indices) if (chat[i].streaming) chat[i] = chat[i].copy(streaming = false)
                 agentBusy = false
             }
         }
@@ -427,6 +505,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             } finally {
                 diagnosticsRunning = false
             }
+        }
+    }
+
+    /** Sends a report about a Gemini reply to the developer and confirms it in the chat. */
+    fun reportReply(item: ChatItem, reason: com.aura.launcher.gemini.ReportReason) {
+        val reports = com.aura.launcher.gemini.ReplyReports
+        if (!reports.hasEndpoint) {
+            ActivityBridge.start(context, reports.issueIntent(item.text, reason, prefs.model))
+            return
+        }
+        viewModelScope.launch {
+            val ok = reports.send(item.text, reason, prefs.model)
+            chat += ChatItem(ChatRole.NOTICE, if (ok) "Thanks — your report was sent." else "Couldn't send the report. Check your connection and try again.")
         }
     }
 

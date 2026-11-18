@@ -40,7 +40,7 @@ object WeatherService {
             val url = URL(
                 String.format(
                     Locale.US,
-                    "https://api.open-meteo.com/v1/forecast?latitude=%.3f&longitude=%.3f" +
+                    "https://api.open-meteo.com/v1/forecast?latitude=%.2f&longitude=%.2f" +
                         "&current=temperature_2m,weather_code,is_day&daily=temperature_2m_max,temperature_2m_min&forecast_days=1&timezone=auto&temperature_unit=%s",
                     location.latitude, location.longitude, if (fahrenheit) "fahrenheit" else "celsius",
                 )

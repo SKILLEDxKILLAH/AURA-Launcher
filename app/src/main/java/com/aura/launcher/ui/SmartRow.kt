@@ -3,6 +3,9 @@ package com.aura.launcher.ui
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.remember
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -37,7 +40,13 @@ import com.aura.launcher.ui.theme.Aura
  * when and how often you open apps) or the last five you opened ("Recent").
  */
 @Composable
-fun SmartRow(suggested: List<AppEntry>, recent: List<AppEntry>, repo: AppRepository, onLaunch: (AppEntry) -> Unit) {
+fun SmartRow(
+    suggested: List<AppEntry>,
+    recent: List<AppEntry>,
+    repo: AppRepository,
+    onLaunch: (AppEntry) -> Unit,
+    menu: AppMenuActions = AppMenuActions(),
+) {
     var showRecent by rememberSaveable { mutableStateOf(false) }
     val list = if (showRecent || suggested.isEmpty()) recent else suggested
     Column(Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 4.dp)) {
@@ -48,13 +57,19 @@ fun SmartRow(suggested: List<AppEntry>, recent: List<AppEntry>, repo: AppReposit
         }
         Crossfade(list, label = "smart") { apps ->
             Row(
-                Modifier.fillMaxWidth().glass(RoundedCornerShape(24.dp), fill = Color(0x14FFFFFF)).padding(vertical = 10.dp, horizontal = 4.dp),
+                Modifier.fillMaxWidth().glass(RoundedCornerShape(24.dp), fill = Aura.Glass).padding(vertical = 10.dp, horizontal = 4.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
             ) {
                 apps.take(5).forEach { app ->
+                    var open by remember { mutableStateOf(false) }
+                    Box(Modifier.weight(1f)) {
+                    AppMenu(app, repo, expanded = open, onDismiss = { open = false }, actions = menu)
                     Column(
-                        Modifier.weight(1f).clip(RoundedCornerShape(16.dp))
-                            .clickable(onClickLabel = "Open ${app.label}", role = Role.Button) { onLaunch(app) }
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                            .combinedClickable(
+                                onClickLabel = "Open ${app.label}", role = Role.Button,
+                                onLongClickLabel = "Shortcuts and options", onLongClick = { open = true },
+                            ) { onLaunch(app) }
                             .padding(vertical = 4.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
@@ -65,6 +80,7 @@ fun SmartRow(suggested: List<AppEntry>, recent: List<AppEntry>, repo: AppReposit
                             maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
                             modifier = Modifier.padding(horizontal = 2.dp),
                         )
+                    }
                     }
                 }
                 // Keep icon spacing stable when fewer than five apps are known yet.
@@ -78,7 +94,7 @@ fun SmartRow(suggested: List<AppEntry>, recent: List<AppEntry>, repo: AppReposit
 private fun Tab(label: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
     Text(
         label,
-        color = when { selected -> Color.White; enabled -> Aura.InkDim; else -> Aura.InkFaint },
+        color = when { selected -> Aura.InkStrong; enabled -> Aura.InkDim; else -> Aura.InkFaint },
         fontSize = 13.sp, fontFamily = Aura.Sans,
         fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
         modifier = Modifier.clip(RoundedCornerShape(14.dp))

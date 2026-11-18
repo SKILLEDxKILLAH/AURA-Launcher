@@ -54,18 +54,21 @@ fun SettingsScreen(
     onSignOut: () -> Unit,
     onRunCheck: () -> Unit,
     requestPermissions: (List<String>) -> Unit,
+    apps: List<com.aura.launcher.data.AppEntry> = emptyList(),
+    onAddWidget: () -> Unit = {},
+    onEnableGestures: () -> Unit = {},
     onClose: () -> Unit,
 ) {
     val context = LocalContext.current
     Column(
-        Modifier.fillMaxSize().background(Color(0xF71D1B19)).systemBarsPadding().imePadding()
+        Modifier.fillMaxSize().background(Aura.Surface).systemBarsPadding().imePadding()
             .verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             AuraGlyph(Glyph.Sparkle, size = 30.dp)
             Spacer(Modifier.width(12.dp))
             Text("AURA", color = Aura.Ink, fontSize = 30.sp, fontFamily = Aura.Sans, modifier = Modifier.weight(1f))
-            Text("Done", color = Aura.GeminiViolet, fontSize = 16.sp, modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onClose).padding(10.dp))
+            Text("Done", color = Aura.Accent, fontSize = 16.sp, modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onClose).padding(10.dp))
         }
 
         Group("Home") {
@@ -87,12 +90,78 @@ fun SettingsScreen(
                 "Current conditions like the Pixel launcher; tap to open your weather app",
                 prefs.topLineMode == TopLineMode.WEATHER,
             ) { prefs.updateTopLineMode(TopLineMode.WEATHER) }
+            ActionRow("Add a widget", "Or press and hold an empty spot on the home screen → Widgets", onAddWidget)
             ToggleRow("AURA backdrop", "Off uses your system wallpaper", prefs.useAuraBackdrop, prefs::updateUseAuraBackdrop)
             ToggleRow("Weather under the clock", "Local conditions via Open‑Meteo", prefs.showWeather, prefs::updateShowWeather)
             ToggleRow("Fahrenheit", null, prefs.fahrenheit, prefs::updateFahrenheit)
         }
 
+        Group("Look") {
+            Text("Theme", color = Aura.InkDim, fontSize = 13.sp, modifier = Modifier.padding(start = 10.dp, top = 6.dp))
+            Segmented(
+                options = com.aura.launcher.ui.theme.ThemeMode.entries.sortedBy { it != com.aura.launcher.ui.theme.ThemeMode.SYSTEM },
+                selected = prefs.themeMode, label = { it.label }, onSelect = prefs::updateThemeMode,
+            )
+            Text("Colors", color = Aura.InkDim, fontSize = 13.sp, modifier = Modifier.padding(start = 10.dp, top = 10.dp))
+            Segmented(
+                options = com.aura.launcher.ui.theme.ColorSource.entries.toList(),
+                selected = prefs.colorSource, label = { it.label }, onSelect = prefs::updateColorSource,
+            )
+            Text(
+                if (prefs.colorSource == com.aura.launcher.ui.theme.ColorSource.WALLPAPER)
+                    "AURA takes its colors from your wallpaper, like the rest of Android (Wallpaper & style)."
+                else "AURA's own warm sand colors.",
+                color = Aura.InkFaint, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+            )
+            ToggleRow(
+                "Themed icons",
+                "Single-color app icons that match the theme, for apps that offer them",
+                prefs.themedIcons, prefs::updateThemedIcons,
+            )
+        }
+
         Group("App drawer") {
+            Text("Layout", color = Aura.InkDim, fontSize = 13.sp, modifier = Modifier.padding(start = 10.dp, top = 6.dp))
+            Segmented(
+                options = com.aura.launcher.data.DrawerLayout.entries.toList(),
+                selected = prefs.drawerLayout, label = { it.label }, onSelect = prefs::updateDrawerLayout,
+            )
+            Text(
+                when (prefs.drawerLayout) {
+                    com.aura.launcher.data.DrawerLayout.LIST -> "Big icons with a short description of each app."
+                    com.aura.launcher.data.DrawerLayout.COMPACT -> "Smaller rows, about twice as many apps on screen."
+                    com.aura.launcher.data.DrawerLayout.GRID -> "Four apps per row, like a classic app drawer."
+                },
+                color = Aura.InkFaint, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+            )
+            ToggleRow(
+                "Open keyboard with drawer",
+                "Start typing an app's name as soon as the drawer opens",
+                prefs.drawerKeyboard, prefs::updateDrawerKeyboard,
+            )
+            val hidden = apps.filter { it.key in prefs.hiddenApps }.distinctBy { it.key }
+            Text(
+                if (hidden.isEmpty()) "Hidden apps: none. Hold an app in the drawer and choose “Hide from app drawer”."
+                else "Hidden apps (still found by search)",
+                color = Aura.InkDim, fontSize = 13.sp, modifier = Modifier.padding(start = 10.dp, end = 10.dp, top = 10.dp, bottom = 2.dp),
+            )
+            hidden.forEach { app ->
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 10.dp, end = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(app.label, color = Aura.Ink, fontSize = 16.sp, fontFamily = Aura.Sans, modifier = Modifier.weight(1f))
+                    Text(
+                        "Show", color = Aura.Accent, fontSize = 14.sp,
+                        modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable { prefs.toggleHidden(app.key) }.padding(10.dp),
+                    )
+                }
+            }
+            if (prefs.drawerTipSeen) {
+                ActionRow("Show drawer tips again", "The short how-to card at the top of the app drawer") {
+                    prefs.resetDrawerTip()
+                }
+            }
             ToggleRow(
                 "Gemini bar",
                 "The “What can I do for you?” bar at the bottom of the app drawer",
@@ -127,7 +196,10 @@ fun SettingsScreen(
             ActionRow(
                 "AURA gestures",
                 (if (gesturesOn) "On" else "Off") + " · swipe down with one finger for notifications, two fingers for Quick Settings",
-            ) { ActivityBridge.start(context, Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+            ) {
+                // Turning it on goes through the disclosure; turning it off goes straight to Android.
+                if (gesturesOn) ActivityBridge.start(context, Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) else onEnableGestures()
+            }
             if (!gesturesOn) {
                 ActionRow(
                     "Greyed out? Allow restricted settings",
@@ -154,7 +226,7 @@ fun SettingsScreen(
                     "Allow AURA to use Gemini with your Google account",
                     onSignIn,
                 )
-                signInError?.let { Text(it, color = Color(0xFFFFB4A9), fontSize = 13.sp, modifier = Modifier.padding(horizontal = 10.dp)) }
+                signInError?.let { Text(it, color = Aura.Error, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 10.dp)) }
             }
             ActionRow("Grant phone permissions", "Contacts, calling, microphone and location for Gemini actions and weather") {
                 requestPermissions(
@@ -187,7 +259,7 @@ fun SettingsScreen(
                         transformation = if (reveal) VisualTransformation.None else PasswordVisualTransformation(),
                     )
                     Text(
-                        if (reveal) "Hide key" else "Show key", color = Aura.GeminiViolet, fontSize = 13.sp,
+                        if (reveal) "Hide key" else "Show key", color = Aura.Accent, fontSize = 13.sp,
                         modifier = Modifier.padding(start = 6.dp, bottom = 6.dp).clickable { reveal = !reveal },
                     )
                 }
@@ -236,7 +308,7 @@ private fun ToggleRow(title: String, subtitle: String?, checked: Boolean, onChan
         }
         Switch(
             checked = checked, onCheckedChange = onChange,
-            colors = SwitchDefaults.colors(checkedTrackColor = Aura.GeminiViolet, checkedThumbColor = Color.White),
+            colors = SwitchDefaults.colors(checkedTrackColor = Aura.Accent, checkedThumbColor = Aura.OnAccent),
         )
     }
 }
@@ -258,7 +330,7 @@ private fun Field(label: String, value: String, onChange: (String) -> Unit, tran
         singleLine = true,
         visualTransformation = transformation,
         colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = Aura.GeminiViolet,
+            focusedBorderColor = Aura.Accent,
             unfocusedBorderColor = Aura.Stroke,
             focusedTextColor = Aura.Ink,
             unfocusedTextColor = Aura.Ink,
@@ -275,7 +347,7 @@ private fun AccountRow(name: String, email: String, onSignOut: () -> Unit) {
             Text("Gemini is signed in as $email", color = Aura.InkDim, fontSize = 13.sp)
         }
         Text(
-            "Sign out", color = Aura.GeminiViolet, fontSize = 14.sp,
+            "Sign out", color = Aura.Accent, fontSize = 14.sp,
             modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onSignOut).padding(10.dp),
         )
     }
@@ -295,6 +367,30 @@ private fun CopyRow(label: String, value: String) {
     }
 }
 
+/** A row of pill buttons; exactly one is selected. */
+@Composable
+private fun <T> Segmented(options: List<T>, selected: T, label: (T) -> String, onSelect: (T) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp).glass(RoundedCornerShape(22.dp)).padding(4.dp),
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp),
+    ) {
+        options.forEach { option ->
+            val on = option == selected
+            Text(
+                label(option),
+                color = if (on) Aura.OnAccent else Aura.InkDim,
+                fontSize = 14.sp, fontFamily = Aura.Sans, maxLines = 1,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                fontWeight = if (on) androidx.compose.ui.text.font.FontWeight.Medium else androidx.compose.ui.text.font.FontWeight.Normal,
+                modifier = Modifier.weight(1f).clip(RoundedCornerShape(18.dp))
+                    .then(if (on) Modifier.background(Aura.Accent) else Modifier)
+                    .clickable(role = androidx.compose.ui.semantics.Role.RadioButton) { onSelect(option) }
+                    .padding(vertical = 10.dp),
+            )
+        }
+    }
+}
+
 @Composable
 private fun ChoiceRow(title: String, subtitle: String, selected: Boolean, onClick: () -> Unit) {
     Row(
@@ -303,7 +399,7 @@ private fun ChoiceRow(title: String, subtitle: String, selected: Boolean, onClic
     ) {
         androidx.compose.material3.RadioButton(
             selected = selected, onClick = onClick,
-            colors = androidx.compose.material3.RadioButtonDefaults.colors(selectedColor = Aura.GeminiViolet),
+            colors = androidx.compose.material3.RadioButtonDefaults.colors(selectedColor = Aura.Accent),
         )
         Spacer(Modifier.width(6.dp))
         Column(Modifier.weight(1f)) {

@@ -25,6 +25,12 @@ class AuraAgent(private val tools: PhoneTools) {
 
         /** Something the user should know, e.g. a thinking-level fallback. */
         data class Notice(val text: String) : Event
+
+        /**
+         * What Gemini has written so far in the current step, while it is still writing. A
+         * [Thought] and/or [Reply] with the finished text always follows.
+         */
+        data class Partial(val thought: String, val reply: String) : Event
     }
 
     private val history = JSONArray()
@@ -37,8 +43,8 @@ class AuraAgent(private val tools: PhoneTools) {
         prompt: String,
         credential: GeminiCredential,
         model: String,
-        appNames: List<String>,
         thinking: ThinkingLevel = ThinkingLevel.AUTO,
+        stream: Boolean = true,
         onEvent: suspend (Event) -> Unit,
     ) {
         var noticeShown = false
@@ -47,7 +53,21 @@ class AuraAgent(private val tools: PhoneTools) {
 
         repeat(MAX_STEPS) {
             val started = System.currentTimeMillis()
-            val result = generateAuthorized(credential, model, appNames, thinking)
+            val liveThought = StringBuilder()
+            val liveReply = StringBuilder()
+            val onChunk: (suspend (JSONObject) -> Unit)? = if (!stream) null else { chunk ->
+                val ps = chunk.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")
+                var changed = false
+                for (i in 0 until (ps?.length() ?: 0)) {
+                    val part = ps!!.getJSONObject(i)
+                    val piece = part.optString("text")
+                    if (piece.isEmpty()) continue
+                    (if (part.optBoolean("thought", false)) liveThought else liveReply).append(piece)
+                    changed = true
+                }
+                if (changed) onEvent(Event.Partial(liveThought.toString().trim(), liveReply.toString().trim()))
+            }
+            val result = generateAuthorized(credential, model, thinking, onChunk)
             val response = result.json
             if (result.note != null && !noticeShown) {
                 noticeShown = true
@@ -93,18 +113,22 @@ class AuraAgent(private val tools: PhoneTools) {
     private suspend fun generateAuthorized(
         credential: GeminiCredential,
         model: String,
-        appNames: List<String>,
         thinking: ThinkingLevel,
+        onChunk: (suspend (JSONObject) -> Unit)?,
     ): ThinkingResponse {
         val body = JSONObject()
-            .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", systemPrompt(appNames)))))
+            .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", systemPrompt()))))
             .put("contents", history)
             .put("tools", JSONArray().put(JSONObject().put("functionDeclarations", tools.declarations())))
             .put("toolConfig", JSONObject().put("functionCallingConfig", JSONObject().put("mode", "AUTO")))
-        return GeminiApi.generateThinking(credential, model, body, thinking)
+        return GeminiApi.generateThinking(credential, model, body, thinking, onChunk)
     }
 
-    private fun systemPrompt(appNames: List<String>): String {
+    /**
+     * No list of installed apps is sent: Google Play treats it as sensitive data. open_app
+     * matches the name the user said against the apps on the phone instead.
+     */
+    private fun systemPrompt(): String {
         val now = ZonedDateTime.now().format(DateTimeFormatter.ofPattern("EEEE, MMMM d yyyy, h:mm a z"))
         return """
             You are Google Gemini running inside AURA, a minimalist launcher on the user's Android ${Build.VERSION.RELEASE} phone.
@@ -115,7 +139,7 @@ class AuraAgent(private val tools: PhoneTools) {
             - Calls and messages go to real people: only call or text when the user clearly asked to.
             - If a request needs something the tools can't do, answer it directly and briefly instead.
             - Current local time: $now.
-            Installed apps: ${appNames.joinToString(", ").take(4000)}
+            - To open an app, call open_app with the name the user said; it's matched on the phone.
         """.trimIndent()
     }
 

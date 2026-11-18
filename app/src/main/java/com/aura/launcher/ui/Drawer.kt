@@ -28,16 +28,29 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.lerp
+import androidx.compose.ui.util.lerp
+import com.aura.launcher.data.DrawerLayout
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -128,10 +141,19 @@ fun AppDrawer(
     recent: List<AppEntry> = emptyList(),
     showGeminiBar: Boolean = true,
     showGeminiButton: Boolean = true,
+    layout: DrawerLayout = DrawerLayout.LIST,
+    menuActions: AppMenuActions? = null,
+    showTip: Boolean = false,
+    onTipDismiss: () -> Unit = {},
+    dockEntry: (DockItem) -> AppEntry? = { null },
 ) {
+    val menu = menuActions ?: AppMenuActions(
+        toggleFavorite = actions.toggleFavorite, appInfo = actions.appInfo, uninstall = actions.uninstall,
+        isFavorite = { it.key in favoriteKeys },
+    )
     val showSmart = suggested.isNotEmpty() || recent.isNotEmpty()
-    /** The Suggested/Recent row sits above the A–Z list, shifting list indices by one. */
-    val listOffset = if (showSmart) 1 else 0
+    /** Rows above the A–Z list (tip, Suggested/Recent) shift list indices. */
+    val listOffset = (if (showTip) 1 else 0) + (if (showSmart) 1 else 0)
     val rows = remember(apps) {
         buildList {
             apps.groupBy { it.letter }.forEach { (letter, group) ->
@@ -147,15 +169,45 @@ fun AppDrawer(
         (if (favorites.isNotEmpty()) listOf(FAVORITES_LETTER) else emptyList()) + headerIndex.keys
     }
 
+    val grid = layout == DrawerLayout.GRID
     val listState = rememberLazyListState()
+    val gridState = rememberLazyGridState()
+    val firstVisible by remember(grid) { derivedStateOf { if (grid) gridState.firstVisibleItemIndex else listState.firstVisibleItemIndex } }
+    suspend fun scrollToIndex(index: Int) = if (grid) gridState.scrollToItem(index) else listState.scrollToItem(index)
+
     val scrub = remember { ScrubState() }
     val geometry = rememberArcGeometry()
     val scope = rememberCoroutineScope()
     val view = LocalView.current
     var scrubAnim by remember { mutableStateOf<Job?>(null) }
 
+    // The big letter shrinks as you scroll so more apps fit, and grows back at the top.
+    val density = LocalDensity.current
+    val collapseRange = with(density) { (BIG_LETTER_HEIGHT - SMALL_LETTER_HEIGHT).toPx() }
+    var collapsed by remember { mutableFloatStateOf(0f) }
+    val collapse = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (available.y >= 0f) return Offset.Zero
+                val next = (collapsed - available.y).coerceAtMost(collapseRange)
+                val used = next - collapsed
+                collapsed = next
+                return Offset(0f, -used)
+            }
+
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                if (available.y <= 0f) return Offset.Zero
+                val next = (collapsed - available.y).coerceAtLeast(0f)
+                val used = collapsed - next
+                collapsed = next
+                return Offset(0f, used)
+            }
+        }
+    }
+    val collapseFraction = if (collapseRange > 0f) collapsed / collapseRange else 0f
+
     val listLetter by remember(rows, listOffset) {
-        derivedStateOf { rows.getOrNull(listState.firstVisibleItemIndex - listOffset)?.letter }
+        derivedStateOf { rows.getOrNull(firstVisible - listOffset)?.letter }
     }
     val displayLetter = (if (scrub.active) scrub.selected else listLetter) ?: letters.firstOrNull { it != FAVORITES_LETTER } ?: "A"
 
@@ -204,7 +256,13 @@ fun AppDrawer(
             AuraTopBar(repo, onGoogle = actions.openGoogle, topLine = topLine, editable = false)
             Row(Modifier.weight(1f)) {
                 Column(Modifier.weight(1f)) {
-                    BigLetter(displayLetter, Modifier.fillMaxWidth().height(164.dp))
+                    BigLetter(
+                        displayLetter,
+                        collapse = if (query.isBlank()) collapseFraction else 1f,
+                        modifier = Modifier.fillMaxWidth().testTag("big_letter").height(
+                            lerp(BIG_LETTER_HEIGHT, SMALL_LETTER_HEIGHT, if (query.isBlank()) collapseFraction else 1f)
+                        ),
+                    )
                     AuraSearchBar(
                         query = query,
                         onChange = onQueryChange,
@@ -216,30 +274,49 @@ fun AppDrawer(
                         modifier = Modifier.padding(start = 18.dp, end = if (query.isBlank()) 0.dp else 18.dp),
                     )
                     Spacer(Modifier.height(10.dp))
-                    Box(Modifier.weight(1f)) {
-                        if (query.isBlank()) {
-                            LazyColumn(
-                                state = listState,
-                                modifier = Modifier.fillMaxSize().fadeMask(),
-                                contentPadding = PaddingValues(start = 14.dp, end = 4.dp, bottom = if (showGeminiButton) 88.dp else 16.dp),
+                    Box(Modifier.weight(1f).nestedScroll(collapse)) {
+                        val bottomPad = if (showGeminiButton) 88.dp else 16.dp
+                        if (query.isNotBlank()) {
+                            SearchResults(query, repo, menu, actions)
+                        } else if (grid) {
+                            LazyVerticalGrid(
+                                columns = GridCells.Fixed(4),
+                                state = gridState,
+                                modifier = Modifier.fillMaxSize().fadeMask().testTag("drawer_list"),
+                                contentPadding = PaddingValues(start = 10.dp, end = 4.dp, bottom = bottomPad),
                             ) {
-                                if (showSmart) item(key = "smart_row", contentType = "smart") {
-                                    SmartRow(suggested, recent, repo, actions.launch)
+                                if (showTip) item(key = "tip", span = { GridItemSpan(maxLineSpan) }) { DrawerTip(onTipDismiss) }
+                                if (showSmart) item(key = "smart_row", span = { GridItemSpan(maxLineSpan) }, contentType = "smart") {
+                                    SmartRow(suggested, recent, repo, actions.launch, menu)
                                 }
-                                items(rows, key = { it.key }, contentType = { it is DrawerRow.Header }) { row ->
+                                items(
+                                    rows, key = { it.key },
+                                    span = { if (it is DrawerRow.Header) GridItemSpan(maxLineSpan) else GridItemSpan(1) },
+                                    contentType = { it is DrawerRow.Header },
+                                ) { row ->
                                     when (row) {
                                         is DrawerRow.Header -> SectionHeader(row.letter)
-                                        is DrawerRow.App -> AppRow(
-                                            entry = row.entry,
-                                            repo = repo,
-                                            isFavorite = row.entry.key in favoriteKeys,
-                                            actions = actions,
-                                        )
+                                        is DrawerRow.App -> AppCell(row.entry, repo, menu, actions.launch)
                                     }
                                 }
                             }
                         } else {
-                            SearchResults(query, repo, favoriteKeys, actions)
+                            LazyColumn(
+                                state = listState,
+                                modifier = Modifier.fillMaxSize().fadeMask().testTag("drawer_list"),
+                                contentPadding = PaddingValues(start = 14.dp, end = 4.dp, bottom = bottomPad),
+                            ) {
+                                if (showTip) item(key = "tip") { DrawerTip(onTipDismiss) }
+                                if (showSmart) item(key = "smart_row", contentType = "smart") {
+                                    SmartRow(suggested, recent, repo, actions.launch, menu)
+                                }
+                                items(rows, key = { it.key }, contentType = { it is DrawerRow.Header }) { row ->
+                                    when (row) {
+                                        is DrawerRow.Header -> SectionHeader(row.letter, compact = layout == DrawerLayout.COMPACT)
+                                        is DrawerRow.App -> AppRow(row.entry, repo, menu, actions.launch, compact = layout == DrawerLayout.COMPACT)
+                                    }
+                                }
+                            }
                         }
                         if (showGeminiButton) SparkleFab(
                             onClick = actions.geminiLongPress,
@@ -268,7 +345,9 @@ fun AppDrawer(
                                     val target = scrub.selected
                                     scope.launch {
                                         val index = if (target == FAVORITES_LETTER) 0 else (headerIndex[target] ?: return@launch) + listOffset
-                                        listState.scrollToItem(index)
+                                        // Jumping into the list: make room for apps, not the letter.
+                                        if (index > 0) collapsed = collapseRange
+                                        scrollToIndex(index)
                                     }
                                 }
                                 scrub.active = false
@@ -293,7 +372,7 @@ fun AppDrawer(
             } else {
                 Spacer(Modifier.height(14.dp))
             }
-            Dock(dock, repo, actions.launchDock, Modifier.padding(bottom = 18.dp))
+            Dock(dock, repo, actions.launchDock, Modifier.padding(bottom = 18.dp), entryFor = dockEntry, menuActions = menu)
         }
 
         if (query.isBlank()) {
@@ -307,6 +386,33 @@ fun AppDrawer(
                 modifier = Modifier.fillMaxSize(),
             )
         }
+    }
+}
+
+private val BIG_LETTER_HEIGHT = 164.dp
+private val SMALL_LETTER_HEIGHT = 64.dp
+
+/** One-time help for the two things people don't find on their own. */
+@Composable
+private fun DrawerTip(onDismiss: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp, end = 10.dp)
+            .glass(RoundedCornerShape(22.dp), fill = Aura.GlassStrong).padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Tips", color = Aura.Ink, fontSize = 15.sp, fontFamily = Aura.Sans, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Slide along the letters on the right to jump, then slide left to pick an app.\n" +
+                    "Hold any app for its shortcuts, favorites, hiding and uninstall.",
+                color = Aura.InkDim, fontSize = 13.sp, fontFamily = Aura.Sans, lineHeight = 18.sp,
+            )
+        }
+        Text(
+            "Got it", color = Aura.Accent, fontSize = 14.sp, fontFamily = Aura.Sans,
+            modifier = Modifier.clip(RoundedCornerShape(14.dp)).clickable(onClick = onDismiss).padding(10.dp),
+        )
     }
 }
 
@@ -325,18 +431,28 @@ private fun Modifier.fadeMask() = this
             Brush.verticalGradient(
                 0f to Color.Transparent,
                 0.03f to Color.Black,
-                0.42f to Color.Black,
-                1f to Color.Black.copy(alpha = 0.16f),
+                0.55f to Color.Black,
+                1f to Color.Black.copy(alpha = 0.5f),
             ),
             blendMode = BlendMode.DstIn,
         )
     }
 
 @Composable
-private fun BigLetter(letter: String, modifier: Modifier = Modifier) {
-    Box(modifier, contentAlignment = Alignment.BottomCenter) {
+private fun BigLetter(letter: String, modifier: Modifier = Modifier, collapse: Float = 0f) {
+    // Shrinks from the bottom centre as the header collapses.
+    val scale = lerp(1f, 0.38f, collapse)
+    Box(
+        modifier.graphicsLayer {
+            scaleX = scale; scaleY = scale
+            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
+        },
+        contentAlignment = Alignment.BottomCenter,
+    ) {
         AnimatedContent(
             targetState = letter,
+            // Full size even when the header is short, so scaling (not squeezing) makes it small.
+            modifier = Modifier.wrapContentHeight(Alignment.Bottom, unbounded = true),
             transitionSpec = {
                 (fadeIn(tween(240)) + scaleIn(tween(240), initialScale = 0.9f)) togetherWith
                     fadeOut(tween(160)) using SizeTransform(clip = false)
@@ -346,7 +462,7 @@ private fun BigLetter(letter: String, modifier: Modifier = Modifier) {
             Text(
                 if (l == FAVORITES_LETTER) "★" else l,
                 style = TextStyle(
-                    brush = Brush.verticalGradient(listOf(Color(0xD9FFFFFF), Color(0x66F2E6D8), Color(0x0DFFFFFF))),
+                    brush = Brush.verticalGradient(listOf(Aura.Ink.copy(alpha = 0.85f), Aura.Ink.copy(alpha = 0.4f), Aura.Ink.copy(alpha = 0.05f))),
                     fontSize = 184.sp,
                     lineHeight = 184.sp,
                     fontFamily = FontFamily.Serif,
@@ -386,7 +502,7 @@ private fun AuraSearchBar(
                 onValueChange = onChange,
                 singleLine = true,
                 textStyle = TextStyle(color = Aura.Ink, fontSize = 16.sp, fontFamily = Aura.Sans),
-                cursorBrush = SolidColor(Aura.GeminiViolet),
+                cursorBrush = SolidColor(Aura.Accent),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { keyboard?.hide(); onSubmit() }),
                 modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
@@ -402,9 +518,9 @@ private fun AuraSearchBar(
 }
 
 @Composable
-private fun SectionHeader(letter: String) {
+private fun SectionHeader(letter: String, compact: Boolean = false) {
     Row(
-        Modifier.fillMaxWidth().padding(start = 6.dp, top = 14.dp, bottom = 6.dp, end = 12.dp),
+        Modifier.fillMaxWidth().padding(start = 6.dp, top = if (compact) 8.dp else 14.dp, bottom = if (compact) 2.dp else 6.dp, end = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(letter, color = Aura.InkDim, fontSize = 20.sp, fontFamily = Aura.Sans)
@@ -417,8 +533,15 @@ private fun SectionHeader(letter: String) {
 }
 
 @Composable
-private fun AppRow(entry: AppEntry, repo: AppRepository, isFavorite: Boolean, actions: DrawerActions) {
-    var menu by remember { mutableStateOf(false) }
+private fun AppRow(
+    entry: AppEntry,
+    repo: AppRepository,
+    menu: AppMenuActions,
+    launch: (AppEntry) -> Unit,
+    compact: Boolean = false,
+    note: String? = null,
+) {
+    var open by remember { mutableStateOf(false) }
     val view = LocalView.current
     Box {
         Row(
@@ -426,33 +549,62 @@ private fun AppRow(entry: AppEntry, repo: AppRepository, isFavorite: Boolean, ac
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(22.dp))
                 .combinedClickable(
-                    onClick = { actions.launch(entry) },
+                    onClickLabel = "Open",
+                    onLongClickLabel = "Shortcuts and options",
+                    onClick = { launch(entry) },
                     onLongClick = {
                         view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                        menu = true
+                        open = true
                     },
                 )
-                .padding(horizontal = 6.dp, vertical = 8.dp),
+                .padding(horizontal = 6.dp, vertical = if (compact) 5.dp else 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            AppIcon(entry, repo, 58.dp)
-            Spacer(Modifier.width(20.dp))
+            AppIcon(entry, repo, if (compact) 42.dp else 58.dp)
+            Spacer(Modifier.width(if (compact) 16.dp else 20.dp))
             Column(Modifier.weight(1f)) {
-                Text(entry.label, color = Aura.Ink, fontSize = 19.sp, fontFamily = Aura.Sans, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (entry.subtitle.isNotEmpty()) {
-                    Text(entry.subtitle, color = Aura.InkDim, fontSize = 14.sp, fontFamily = Aura.Sans, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(entry.label, color = Aura.Ink, fontSize = if (compact) 17.sp else 19.sp, fontFamily = Aura.Sans, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                val sub = note ?: entry.subtitle.takeIf { !compact }
+                if (!sub.isNullOrEmpty()) {
+                    Text(sub, color = Aura.InkDim, fontSize = 14.sp, fontFamily = Aura.Sans, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
-            if (isFavorite) AuraGlyph(Glyph.Star, size = 12.dp, color = Aura.GeminiViolet)
+            if (menu.isFavorite(entry)) AuraGlyph(Glyph.Star, size = 12.dp, color = Aura.Accent)
         }
-        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            DropdownMenuItem(
-                text = { Text(if (isFavorite) "Remove from favorites" else "Add to favorites") },
-                onClick = { menu = false; actions.toggleFavorite(entry) },
+        AppMenu(entry, repo, expanded = open, onDismiss = { open = false }, actions = menu)
+    }
+}
+
+/** Grid layout: icon with its name underneath. */
+@Composable
+private fun AppCell(entry: AppEntry, repo: AppRepository, menu: AppMenuActions, launch: (AppEntry) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val view = LocalView.current
+    Box {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(20.dp))
+                .combinedClickable(
+                    onClickLabel = "Open",
+                    onLongClickLabel = "Shortcuts and options",
+                    onClick = { launch(entry) },
+                    onLongClick = {
+                        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                        open = true
+                    },
+                )
+                .padding(vertical = 10.dp, horizontal = 2.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            AppIcon(entry, repo, 54.dp)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                entry.label, color = Aura.Ink, fontSize = 12.sp, fontFamily = Aura.Sans, maxLines = 1,
+                overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
-            DropdownMenuItem(text = { Text("App info") }, onClick = { menu = false; actions.appInfo(entry) })
-            DropdownMenuItem(text = { Text("Uninstall") }, onClick = { menu = false; actions.uninstall(entry) })
         }
+        AppMenu(entry, repo, expanded = open, onDismiss = { open = false }, actions = menu)
     }
 }
 
@@ -460,7 +612,7 @@ private fun AppRow(entry: AppEntry, repo: AppRepository, isFavorite: Boolean, ac
 private fun SearchResults(
     query: String,
     repo: AppRepository,
-    favoriteKeys: Set<String>,
+    menu: AppMenuActions,
     actions: DrawerActions,
 ) {
     val apps = remember(query) { repo.findApps(query, 8) }
@@ -478,7 +630,8 @@ private fun SearchResults(
             )
         }
         if (apps.isNotEmpty()) item(key = "apps_label") { SectionHeader("Apps") }
-        items(apps, key = { it.key }) { AppRow(it, repo, it.key in favoriteKeys, actions) }
+        // Hidden apps still turn up here, so they're never lost.
+        items(apps, key = { it.key }) { AppRow(it, repo, menu, actions.launch, note = if (menu.isHidden(it)) "Hidden from app drawer" else null) }
         if (settings.isNotEmpty()) item(key = "settings_label") { SectionHeader("Settings") }
         items(settings, key = { "s_" + it.id }) { s ->
             ResultRow(

@@ -57,7 +57,7 @@ private fun nameOf(state: GeminiSheetState, id: String) =
 fun ModelBar(state: GeminiSheetState, expanded: Boolean, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Aura.Glass)
-            .border(1.dp, if (expanded) Aura.GeminiViolet.copy(alpha = 0.6f) else Aura.Stroke, RoundedCornerShape(18.dp))
+            .border(1.dp, if (expanded) Aura.Accent.copy(alpha = 0.6f) else Aura.Stroke, RoundedCornerShape(18.dp))
             .clickable(onClickLabel = "Change model and thinking", role = Role.Button, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -72,7 +72,7 @@ fun ModelBar(state: GeminiSheetState, expanded: Boolean, onClick: () -> Unit) {
             Text("Thinking: ${state.thinking.label}", color = Aura.InkDim, fontSize = 13.sp, fontFamily = Aura.Sans, maxLines = 1)
         }
         Spacer(Modifier.width(10.dp))
-        Text(if (expanded) "Done" else "Change", color = Aura.GeminiViolet, fontSize = 14.sp, fontFamily = Aura.Sans)
+        Text(if (expanded) "Done" else "Change", color = Aura.Accent, fontSize = 14.sp, fontFamily = Aura.Sans)
     }
 }
 
@@ -110,13 +110,13 @@ fun ModelPanel(
         PanelTitle("Model")
         when {
             state.modelsLoading && state.models.isEmpty() -> Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(Modifier.size(16.dp), color = Aura.GeminiViolet, strokeWidth = 2.dp)
+                CircularProgressIndicator(Modifier.size(16.dp), color = Aura.Accent, strokeWidth = 2.dp)
                 Spacer(Modifier.width(10.dp))
                 Text("Loading your models…", color = Aura.InkDim, fontSize = 14.sp)
             }
             state.modelsError != null && state.models.isEmpty() -> Column(Modifier.padding(8.dp)) {
-                Text(state.modelsError, color = Color(0xFFFFB4A9), fontSize = 13.sp)
-                Text("Try again", color = Aura.GeminiViolet, fontSize = 14.sp,
+                Text(state.modelsError, color = Aura.Error, fontSize = 13.sp)
+                Text("Try again", color = Aura.Accent, fontSize = 14.sp,
                     modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onRetry).padding(8.dp))
             }
         }
@@ -140,7 +140,7 @@ fun ModelPanel(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("All models (${state.models.size})", color = Aura.Ink, fontSize = 15.sp, fontFamily = Aura.Sans, modifier = Modifier.weight(1f))
-                Text(if (showAll) "Hide" else "Show", color = Aura.GeminiViolet, fontSize = 14.sp)
+                Text(if (showAll) "Hide" else "Show", color = Aura.Accent, fontSize = 14.sp)
             }
             if (showAll) {
                 state.models.groupBy { familyOf(it.id) }.forEach { (family, list) ->
@@ -196,16 +196,16 @@ private fun PanelTitle(text: String) {
 private fun OptionRow(title: String, subtitle: String, selected: Boolean, compact: Boolean = false, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
-            .background(if (selected) Aura.GeminiViolet.copy(alpha = 0.14f) else Color.Transparent)
+            .background(if (selected) Aura.Accent.copy(alpha = 0.14f) else Color.Transparent)
             .clickable(role = Role.RadioButton, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = if (compact) 8.dp else 11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             Modifier.size(20.dp).clip(CircleShape)
-                .border(2.dp, if (selected) Aura.GeminiViolet else Aura.InkFaint, CircleShape),
+                .border(2.dp, if (selected) Aura.Accent else Aura.InkFaint, CircleShape),
             contentAlignment = Alignment.Center,
-        ) { if (selected) Box(Modifier.size(10.dp).clip(CircleShape).background(Aura.GeminiViolet)) }
+        ) { if (selected) Box(Modifier.size(10.dp).clip(CircleShape).background(Aura.Accent)) }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(title, color = Aura.Ink, fontSize = if (compact) 15.sp else 16.sp, fontFamily = Aura.Sans, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -242,8 +242,22 @@ private fun ThinkingSelector(current: ThinkingLevel, onSelect: (ThinkingLevel) -
 fun ThoughtBubble(item: ChatItem) {
     var open by remember { mutableStateOf(false) }
     Column(Modifier.padding(start = 28.dp).animateContentSize()) {
+        if (item.streaming && !open) {
+            // Live: "Thinking…" with the latest line of the summary underneath.
+            Text(
+                "Thinking…  ▸", color = Aura.InkDim, fontSize = 13.sp, fontFamily = Aura.Sans,
+                modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable { open = true }.padding(vertical = 4.dp, horizontal = 2.dp),
+            )
+            Text(
+                item.text.lineSequence().lastOrNull { it.isNotBlank() }.orEmpty().trim().trim('*'),
+                color = Aura.InkFaint, fontSize = 13.sp, fontStyle = FontStyle.Italic, fontFamily = Aura.Sans,
+                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = 2.dp, bottom = 4.dp),
+            )
+            return@Column
+        }
         Text(
-            "Thought for ${formatSeconds(item.millis)}  ${if (open) "▾" else "▸"}",
+            (if (item.streaming) "Thinking…" else "Thought for ${formatSeconds(item.millis)}") + "  ${if (open) "▾" else "▸"}",
             color = Aura.InkDim, fontSize = 13.sp, fontFamily = Aura.Sans,
             modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable { open = !open }.padding(vertical = 4.dp, horizontal = 2.dp),
         )

@@ -107,12 +107,13 @@ private fun EditableLabel(label: String, editable: Boolean, onChange: (String) -
         Spacer(Modifier.width(10.dp))
         if (editing) {
             LaunchedEffect(Unit) { focus.requestFocus() }
+            val underline = Aura.Accent
             BasicTextField(
                 value = draft,
                 onValueChange = { if (it.text.length <= AuraPrefs.MAX_LABEL) draft = it },
                 singleLine = true,
                 textStyle = TextStyle(color = Aura.Ink, fontSize = 16.sp, fontFamily = Aura.Sans),
-                cursorBrush = SolidColor(Aura.GeminiViolet),
+                cursorBrush = SolidColor(Aura.Accent),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done, capitalization = KeyboardCapitalization.Sentences),
                 keyboardActions = KeyboardActions(onDone = { commit() }),
                 modifier = Modifier
@@ -121,7 +122,7 @@ private fun EditableLabel(label: String, editable: Boolean, onChange: (String) -
                     .onFocusChanged { if (it.isFocused) hadFocus = true else if (hadFocus) commit() }
                     .drawBehind {
                         val y = size.height + 3.dp.toPx()
-                        drawLine(Aura.GeminiViolet, Offset(0f, y), Offset(size.width, y), 1.5.dp.toPx())
+                        drawLine(underline, Offset(0f, y), Offset(size.width, y), 1.5.dp.toPx())
                     },
             )
         } else {

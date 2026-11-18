@@ -5,6 +5,7 @@ import com.aura.launcher.data.AppRepository
 import com.aura.launcher.gemini.AuraAgent
 import com.aura.launcher.gemini.GeminiApi
 import com.aura.launcher.gemini.GeminiCredential
+import com.aura.launcher.gemini.GeminiHttpException
 import com.aura.launcher.gemini.PhoneTools
 import com.sun.net.httpserver.HttpServer
 import android.os.Looper
@@ -42,7 +43,12 @@ class GeminiPipelineTest {
         server.createContext("/") { ex ->
             val body = ex.requestBody.bufferedReader().readText()
             requests += Req(ex.requestMethod, ex.requestURI.toString(), ex.requestHeaders.getFirst("Authorization"), body)
-            val (code, resp) = synchronized(responses) { responses.removeFirst() }
+            val (code, queued) = synchronized(responses) { responses.removeFirst() }
+            // Streaming requests get server-sent events: a queued list of chunks (separated by
+            // "\n---\n") becomes one `data:` event each.
+            val resp = if (code == 200 && ex.requestURI.toString().contains("alt=sse")) {
+                queued.split("\n---\n").joinToString("") { "data: $it\r\n\r\n" }
+            } else queued
             val bytes = resp.toByteArray()
             ex.sendResponseHeaders(code, bytes.size.toLong())
             ex.responseBody.use { it.write(bytes) }
@@ -88,7 +94,7 @@ class GeminiPipelineTest {
         // The agent runs tools on the main thread, so run it in the background and pump the
         // (Robolectric) main looper here until it finishes.
         val job = CoroutineScope(Dispatchers.IO).async {
-            agent.send("How much battery do I have?", credential, "gemini-flash-latest", listOf("Maps", "Messages")) { events += it }
+            agent.send("How much battery do I have?", credential, "gemini-flash-latest") { events += it }
         }
         val deadline = System.currentTimeMillis() + 15_000
         while (!job.isCompleted) {
@@ -102,7 +108,7 @@ class GeminiPipelineTest {
         assertEquals(1, refreshes)
         assertEquals("Bearer stale-token", requests[0].auth)
         assertEquals("Bearer fresh-token", requests[1].auth)
-        assertTrue(requests[1].path.endsWith("models/gemini-flash-latest:generateContent"))
+        assertTrue(requests[1].path.endsWith("models/gemini-flash-latest:streamGenerateContent?alt=sse"))
 
         // The request carries AURA's phone tools.
         val first = JSONObject(requests[1].body)
@@ -115,6 +121,82 @@ class GeminiPipelineTest {
         assertTrue(second.toString().contains("\"functionResponse\""))
         assertTrue(second.toString().contains("sig-123"))
         assertEquals(AuraAgent.Event.Reply("You're at 50% battery."), events.last())
+    }
+
+    private fun chunk(vararg parts: JSONObject) = JSONObject().put(
+        "candidates", JSONArray().put(JSONObject().put("content", JSONObject().put("role", "model").put("parts", JSONArray(parts.toList()))))
+    ).toString()
+
+    private fun runAgent(agent: AuraAgent, prompt: String, events: MutableList<AuraAgent.Event>) {
+        val credential = GeminiCredential.ApiKey("test-key")
+        val job = CoroutineScope(Dispatchers.IO).async {
+            agent.send(prompt, credential, "gemini-flash-latest") { events += it }
+        }
+        val deadline = System.currentTimeMillis() + 15_000
+        while (!job.isCompleted) {
+            check(System.currentTimeMillis() < deadline) { "Agent loop timed out; requests so far: $requests" }
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(5)
+        }
+        runBlocking { job.await() }
+    }
+
+    @Test
+    fun repliesStreamInPiecesAndHistoryStaysWhole() {
+        val context = ApplicationProvider.getApplicationContext<android.app.Application>()
+        val agent = AuraAgent(PhoneTools(context, AppRepository(context)))
+        // Thought summary, then the reply in three pieces; the signature arrives last on an empty part.
+        responses += 200 to listOf(
+            chunk(JSONObject().put("text", "Checking the time zone.").put("thought", true)),
+            chunk(JSONObject().put("text", "It's ")),
+            chunk(JSONObject().put("text", "sunny ")),
+            chunk(JSONObject().put("text", "today.")),
+            chunk(JSONObject().put("text", "").put("thoughtSignature", "sig-text")),
+        ).joinToString("\n---\n")
+        responses += 200 to text("Still sunny.")
+
+        val events = java.util.Collections.synchronizedList(mutableListOf<AuraAgent.Event>())
+        runAgent(agent, "Weather?", events)
+
+        // The reply was shown growing, word by word, before the finished line.
+        val partials = events.filterIsInstance<AuraAgent.Event.Partial>().map { it.reply }.filter { it.isNotEmpty() }
+        assertEquals(listOf("It's", "It's sunny", "It's sunny today."), partials)
+        assertEquals("Checking the time zone.", events.filterIsInstance<AuraAgent.Event.Partial>().first().thought)
+        assertEquals(AuraAgent.Event.Reply("It's sunny today."), events.last())
+        assertTrue(events.any { it is AuraAgent.Event.Thought && it.summary == "Checking the time zone." })
+
+        // Next turn: the streamed answer went into the history as one part, signature kept.
+        runAgent(agent, "And tomorrow?", events)
+        val contents = JSONObject(requests[1].body).getJSONArray("contents")
+        val model = contents.getJSONObject(1)
+        assertEquals("model", model.getString("role"))
+        val parts = model.getJSONArray("parts")
+        assertEquals(1, parts.length())
+        assertEquals("It's sunny today.", parts.getJSONObject(0).getString("text"))
+        assertEquals("sig-text", parts.getJSONObject(0).getString("thoughtSignature"))
+    }
+
+    @Test
+    fun streamedToolCallStillRuns() {
+        val context = ApplicationProvider.getApplicationContext<android.app.Application>()
+        val agent = AuraAgent(PhoneTools(context, AppRepository(context)))
+        responses += 200 to functionCall("get_device_status")
+        responses += 200 to listOf(chunk(JSONObject().put("text", "Battery ")), chunk(JSONObject().put("text", "is fine."))).joinToString("\n---\n")
+        val events = java.util.Collections.synchronizedList(mutableListOf<AuraAgent.Event>())
+        runAgent(agent, "Battery?", events)
+        assertTrue(events.any { it is AuraAgent.Event.Action && it.ok })
+        assertEquals(AuraAgent.Event.Reply("Battery is fine."), events.last())
+        assertTrue(requests[1].body.contains("sig-123"))
+    }
+
+    @Test
+    fun streamingErrorsAreReportedLikeOthers() {
+        val context = ApplicationProvider.getApplicationContext<android.app.Application>()
+        val agent = AuraAgent(PhoneTools(context, AppRepository(context)))
+        responses += 429 to """{"error":{"code":429,"message":"Resource has been exhausted"}}"""
+        val events = mutableListOf<AuraAgent.Event>()
+        val e = runCatching { runAgent(agent, "Hi", events) }.exceptionOrNull()
+        assertTrue(e is GeminiHttpException && e.code == 429)
     }
 
     @Test
@@ -208,8 +290,8 @@ class GeminiPipelineTest {
         responses += 200 to text("Second answer")
         val events = mutableListOf<AuraAgent.Event>()
         runBlocking {
-            agent.send("Say hi", key, "gemini-4-hydrogen", emptyList(), com.aura.launcher.data.ThinkingLevel.HIGH) { events += it }
-            agent.send("Again", key, "gemini-4-hydrogen", emptyList(), com.aura.launcher.data.ThinkingLevel.HIGH) { events += it }
+            agent.send("Say hi", key, "gemini-4-hydrogen", com.aura.launcher.data.ThinkingLevel.HIGH) { events += it }
+            agent.send("Again", key, "gemini-4-hydrogen", com.aura.launcher.data.ThinkingLevel.HIGH) { events += it }
         }
         assertTrue(events.any { it is AuraAgent.Event.Thought && it.summary == "The user wants a greeting." })
         assertTrue(events.contains(AuraAgent.Event.Reply("Hello!")))

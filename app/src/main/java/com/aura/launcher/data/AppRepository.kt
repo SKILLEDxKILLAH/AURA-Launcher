@@ -29,6 +29,12 @@ import java.text.Collator
 import java.text.Normalizer
 import java.util.concurrent.ConcurrentHashMap
 
+/** One of an app's shortcuts ("New message", "Navigate home"), shown when you hold its icon. */
+data class AppShortcut(val id: String, val label: String, val packageName: String, val user: UserHandle, val info: android.content.pm.ShortcutInfo?)
+
+/** Colors for themed (monochrome) app icons. */
+data class IconTheme(val background: Int, val foreground: Int)
+
 data class AppEntry(
     val key: String,
     val label: String,
@@ -50,6 +56,19 @@ class AppRepository(private val context: Context) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val infos = ConcurrentHashMap<String, LauncherActivityInfo>()
     private val iconCache = LruCache<String, ImageBitmap>(400)
+
+    /** Colors for themed icons, or null for the apps' own icons. */
+    @Volatile private var iconTheme: IconTheme? = null
+    private val _iconGeneration = MutableStateFlow(0)
+    /** Changes whenever icons need to be drawn again (theme switched). */
+    val iconGeneration: StateFlow<Int> = _iconGeneration
+
+    fun setIconTheme(theme: IconTheme?) {
+        if (theme == iconTheme) return
+        iconTheme = theme
+        iconCache.evictAll()
+        _iconGeneration.value++
+    }
     private val countsPrefs = context.getSharedPreferences("aura_launch_counts", Context.MODE_PRIVATE)
 
     private val _apps = MutableStateFlow<List<AppEntry>>(emptyList())
@@ -106,15 +125,18 @@ class AppRepository(private val context: Context) {
     suspend fun icon(entry: AppEntry): ImageBitmap? = withContext(Dispatchers.IO) {
         iconCache.get(entry.key) ?: run {
             val info = infos[entry.key] ?: return@run null
-            runCatching { info.getBadgedIcon(0).toBitmap(ICON_PX, ICON_PX).asImageBitmap() }
-                .getOrNull()?.also { iconCache.put(entry.key, it) }
+            runCatching {
+                val themed = iconTheme?.let { t -> themedIcon(info.getIcon(0), t)?.let { context.packageManager.getUserBadgedIcon(it, entry.user) } }
+                (themed ?: info.getBadgedIcon(0)).toBitmap(ICON_PX, ICON_PX).asImageBitmap()
+            }.getOrNull()?.also { iconCache.put(entry.key, it) }
         }
     }
 
     suspend fun packageIcon(pkg: String): ImageBitmap? = withContext(Dispatchers.IO) {
         val key = "pkg:$pkg"
         iconCache.get(key) ?: runCatching {
-            context.packageManager.getApplicationIcon(pkg).toBitmap(ICON_PX, ICON_PX).asImageBitmap()
+            val icon = context.packageManager.getApplicationIcon(pkg)
+            (iconTheme?.let { themedIcon(icon, it) } ?: icon).toBitmap(ICON_PX, ICON_PX).asImageBitmap()
         }.getOrNull()?.also { iconCache.put(key, it) }
     }
 
@@ -126,6 +148,39 @@ class AppRepository(private val context: Context) {
         } catch (e: Exception) {
             Toast.makeText(context, "Couldn't open ${entry.label}", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    // ---- App shortcuts --------------------------------------------------------------------------
+
+    /**
+     * The app's shortcuts, best first (at most [limit]). Android only gives these to the
+     * default home app, so this is empty until AURA is set as home.
+     */
+    suspend fun shortcuts(entry: AppEntry, limit: Int = 5): List<AppShortcut> = withContext(Dispatchers.IO) {
+        if (!runCatching { launcherApps.hasShortcutHostPermission() }.getOrDefault(false)) return@withContext emptyList()
+        // The app's own and its dynamic shortcuts: the same set the Pixel launcher shows.
+        val query = LauncherApps.ShortcutQuery()
+            .setPackage(entry.packageName)
+            .setActivity(entry.component)
+            .setQueryFlags(LauncherApps.ShortcutQuery.FLAG_MATCH_MANIFEST or LauncherApps.ShortcutQuery.FLAG_MATCH_DYNAMIC)
+        val found = runCatching { launcherApps.getShortcuts(query, entry.user) }.getOrNull().orEmpty()
+        orderShortcuts(found.filter { it.isEnabled }).take(limit).map {
+            AppShortcut(it.id, (it.shortLabel ?: it.longLabel ?: it.id).toString(), it.`package`, it.userHandle, it)
+        }
+    }
+
+    suspend fun shortcutIcon(shortcut: AppShortcut): ImageBitmap? = withContext(Dispatchers.IO) {
+        val key = "sc:${shortcut.packageName}/${shortcut.id}#${shortcut.user.hashCode()}"
+        iconCache.get(key) ?: runCatching {
+            val info = shortcut.info ?: return@runCatching null
+            launcherApps.getShortcutIconDrawable(info, context.resources.displayMetrics.densityDpi)
+                ?.toBitmap(SHORTCUT_PX, SHORTCUT_PX)?.asImageBitmap()
+        }.getOrNull()?.also { iconCache.put(key, it) }
+    }
+
+    fun startShortcut(shortcut: AppShortcut) {
+        runCatching { launcherApps.startShortcut(shortcut.packageName, shortcut.id, null, null, shortcut.user) }
+            .onFailure { Toast.makeText(context, "Couldn't open “${shortcut.label}”", Toast.LENGTH_SHORT).show() }
     }
 
     fun openAppInfo(entry: AppEntry) {
@@ -224,6 +279,22 @@ class AppRepository(private val context: Context) {
 
     companion object {
         const val ICON_PX = 192
+        private const val SHORTCUT_PX = 96
+
+        /** The app's own (manifest) shortcuts first, then its dynamic ones, each by the app's rank. */
+        fun orderShortcuts(list: List<android.content.pm.ShortcutInfo>) =
+            list.sortedWith(compareBy<android.content.pm.ShortcutInfo>({ if (it.isDeclaredInManifest) 0 else 1 }, { it.rank }))
+
+        /**
+         * The app's single-color (monochrome) icon on a theme-colored background, the way Pixel
+         * draws themed icons. Null when the app doesn't provide one, so its normal icon is used.
+         */
+        fun themedIcon(icon: android.graphics.drawable.Drawable, theme: IconTheme): android.graphics.drawable.Drawable? {
+            val mono = (icon as? android.graphics.drawable.AdaptiveIconDrawable)?.monochrome ?: return null
+            val fg = mono.constantState?.newDrawable()?.mutate() ?: mono.mutate()
+            fg.setTint(theme.foreground)
+            return android.graphics.drawable.AdaptiveIconDrawable(android.graphics.drawable.ColorDrawable(theme.background), fg)
+        }
         private const val MAX_LOG = 600
 
         fun hasUsageAccess(context: Context): Boolean {

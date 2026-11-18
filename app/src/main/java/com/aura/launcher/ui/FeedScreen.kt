@@ -54,7 +54,6 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 data class FeedState(
     val topic: NewsTopic,
@@ -76,7 +75,7 @@ data class FeedActions(
 /** AURA's news feed, swiped in from the left like the Pixel launcher's feed. */
 @Composable
 fun FeedScreen(state: FeedState, actions: FeedActions, modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxSize().background(Color(0xF51B1917))) {
+    Box(modifier.fillMaxSize().background(Aura.Surface)) {
         LazyColumn(
             Modifier.fillMaxSize().systemBarsPadding(),
             contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 12.dp, bottom = 32.dp),
@@ -90,14 +89,14 @@ fun FeedScreen(state: FeedState, actions: FeedActions, modifier: Modifier = Modi
             when {
                 state.stories.isEmpty() && state.loading -> item(key = "loading") {
                     Row(Modifier.fillMaxWidth().padding(28.dp), horizontalArrangement = Arrangement.Center) {
-                        CircularProgressIndicator(Modifier.size(22.dp), color = Aura.GeminiViolet, strokeWidth = 2.dp)
+                        CircularProgressIndicator(Modifier.size(22.dp), color = Aura.Accent, strokeWidth = 2.dp)
                     }
                 }
                 state.stories.isEmpty() && state.error != null -> item(key = "error") {
                     Column(Modifier.fillMaxWidth().glass(RoundedCornerShape(22.dp)).padding(18.dp)) {
                         Text(state.error, color = Aura.Ink, fontSize = 15.sp, fontFamily = Aura.Sans)
                         Text(
-                            "Try again", color = Aura.GeminiViolet, fontSize = 15.sp,
+                            "Try again", color = Aura.Accent, fontSize = 15.sp,
                             modifier = Modifier.padding(top = 8.dp).clip(RoundedCornerShape(12.dp)).clickable(onClick = actions.refresh).padding(6.dp),
                         )
                     }
@@ -129,14 +128,16 @@ private fun FeedHeader(onRefresh: () -> Unit, loading: Boolean) {
         in 17..21 -> "Good evening"
         else -> "Good night"
     }
-    val date = now.format(DateTimeFormatter.ofPattern(android.text.format.DateFormat.getBestDateTimePattern(Locale.getDefault(), "EEEEMMMMd")))
+    // Follows the phone's language, including changes while AURA is open.
+    val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
+    val date = now.format(DateTimeFormatter.ofPattern(android.text.format.DateFormat.getBestDateTimePattern(locale, "EEEEMMMMd"), locale))
     Row(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(greeting, color = Aura.Ink, fontSize = 30.sp, fontFamily = Aura.Display, fontWeight = FontWeight.Light)
             Text(date, color = Aura.InkDim, fontSize = 15.sp, fontFamily = Aura.Sans)
         }
         Text(
-            if (loading) "Updating…" else "Refresh", color = Aura.GeminiViolet, fontSize = 14.sp,
+            if (loading) "Updating…" else "Refresh", color = Aura.Accent, fontSize = 14.sp,
             modifier = Modifier.clip(RoundedCornerShape(14.dp)).clickable(enabled = !loading, onClick = onRefresh).padding(10.dp),
         )
     }
@@ -210,8 +211,6 @@ private fun TopicTabs(current: NewsTopic, onSelect: (NewsTopic) -> Unit) {
     }
 }
 
-/** Solid card color the photo fades into, so text sits on a clean background. */
-private val CardColor = Color(0xFF221F1D)
 
 @Composable
 private fun LeadStory(story: NewsStory, onClick: () -> Unit) =
@@ -230,6 +229,8 @@ private fun StoryRow(story: NewsStory, onClick: () -> Unit) =
 @Composable
 private fun PictureCard(story: NewsStory, imageHeight: Dp, titleSize: Int, onClick: () -> Unit) {
     val shape = RoundedCornerShape(26.dp)
+    // Solid card color the photo fades into, so text sits on a clean background.
+    val CardColor = Aura.Card
     val widthPx = with(androidx.compose.ui.platform.LocalDensity.current) {
         androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp.roundToPx()
     }
@@ -253,7 +254,7 @@ private fun PictureCard(story: NewsStory, imageHeight: Dp, titleSize: Int, onCli
                 SourceLine(story)
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    story.title, color = Color.White, fontSize = titleSize.sp, lineHeight = (titleSize * 1.28f).sp,
+                    story.title, color = Aura.Ink, fontSize = titleSize.sp, lineHeight = (titleSize * 1.28f).sp,
                     fontFamily = Aura.Sans, fontWeight = FontWeight.Medium, maxLines = 3, overflow = TextOverflow.Ellipsis,
                 )
             }
@@ -272,7 +273,7 @@ private fun PictureCard(story: NewsStory, imageHeight: Dp, titleSize: Int, onCli
 @Composable
 private fun TextCard(story: NewsStory, titleSize: Int, onClick: () -> Unit) {
     Column(
-        Modifier.fillMaxWidth().glass(RoundedCornerShape(22.dp), fill = Color(0x12FFFFFF)).clickable(onClick = onClick)
+        Modifier.fillMaxWidth().glass(RoundedCornerShape(22.dp), fill = Aura.Glass).clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 14.dp)
     ) {
         SourceLine(story)

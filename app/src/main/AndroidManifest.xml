@@ -2,8 +2,35 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- A launcher must see every launchable app on the device. -->
-    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <!--
+      Which other apps AURA can see. Google Play restricts QUERY_ALL_PACKAGES, so AURA asks only
+      for what a launcher needs: apps with an icon, apps with widgets, and the apps that handle
+      the few actions it checks for (dock, speech, contacts).
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <provider android:authorities="com.android.contacts" />
+    </queries>
+
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
 
     <!-- Gemini agent + weather -->
@@ -32,6 +59,7 @@
 
     <application
         android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:enableOnBackInvokedCallback="true"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"

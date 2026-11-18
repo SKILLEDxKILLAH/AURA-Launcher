@@ -192,12 +192,16 @@ fun AlphabetArcOverlay(
     val measurer = rememberTextMeasurer()
     val letterStyle = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.Medium, fontFamily = Aura.Sans)
     val layouts = remember(letters, measurer) { letters.map { measurer.measure(it, letterStyle) } }
+    val ink = Aura.Ink
+    val accent = Aura.Accent
+    val scrubScrim = Aura.colors.scrim.copy(alpha = 0.9f)
+    val inkDim = Aura.InkDim
     val bubbleStyle = TextStyle(fontSize = 30.sp, fontWeight = FontWeight.Medium, fontFamily = Aura.Sans, color = Color.White)
     val p = state.progress
 
     Box(modifier) {
         if (p > 0.001f) {
-            Box(Modifier.fillMaxSize().graphicsLayer { alpha = p }.background(Color(0xE0141210)))
+            Box(Modifier.fillMaxSize().graphicsLayer { alpha = p }.background(scrubScrim))
             val centers = geometry.centers(letters.size, state.track)
             val selY = letters.indexOf(state.selected).takeIf { it >= 0 }?.let { centers[it] } ?: state.touch.y
             PreviewList(state, geometry, previewApps, repo, selY)
@@ -218,15 +222,15 @@ fun AlphabetArcOverlay(
 
                 if (letter == activeLetter && p < 1f) {
                     val a = 1f - p
-                    drawCircle(Color.White.copy(alpha = 0.2f * a), 15.dp.toPx(), Offset(restX, y))
-                    drawCircle(Aura.GeminiViolet.copy(alpha = 0.85f * a), 15.dp.toPx(), Offset(restX, y), style = Stroke(1.5.dp.toPx()))
+                    drawCircle(ink.copy(alpha = 0.2f * a), 15.dp.toPx(), Offset(restX, y))
+                    drawCircle(accent.copy(alpha = 0.85f * a), 15.dp.toPx(), Offset(restX, y), style = Stroke(1.5.dp.toPx()))
                 }
 
                 val lay = layouts[i]
                 val color = when {
-                    p > 0f -> Aura.Ink.copy(alpha = 0.7f + 0.3f * near)
-                    letter == activeLetter -> Aura.Ink
-                    else -> Aura.InkDim
+                    p > 0f -> ink.copy(alpha = 0.7f + 0.3f * near)
+                    letter == activeLetter -> ink
+                    else -> inkDim
                 }
                 val s = 1f + 0.45f * near * p
                 scale(s, Offset(x, y)) {

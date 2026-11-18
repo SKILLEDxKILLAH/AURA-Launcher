@@ -51,8 +51,9 @@ You do this once, in the Google Cloud console on any computer. After that, signi
 You're signed in when your email appears under "Gemini" in the panel.
 
 **What AURA asks for, and why:**
-- `generative-language.retriever` and `cloud-platform` are the permissions Google documents for using the Gemini API with your own account.
+- `generative-language.retriever` is Google's permission for using the Gemini API with your own account.
 - `userinfo.email` is used only to show which account is signed in.
+- If Google ever says that isn't enough, AURA asks once more for `cloud-platform`, the broader permission in Google's command-line instructions.
 
 You can sign out at any time in **Settings → Gemini → Sign out**. That revokes AURA's access.
 

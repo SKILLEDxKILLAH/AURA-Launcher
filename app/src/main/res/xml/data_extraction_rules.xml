@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  What Android backs up. Settings come along to a new phone, but the Gemini API key and Google
+  sign-in state never go to cloud backup, and widget ids (which only mean something on this
+  phone) are never copied.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="aura_secrets.xml" />
+        <exclude domain="sharedpref" path="aura_google_auth.xml" />
+        <exclude domain="sharedpref" path="aura_widgets.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="aura_widgets.xml" />
+    </device-transfer>
+</data-extraction-rules>

@@ -1,5 +1,9 @@
 package com.aura.launcher.ui
 
+import androidx.compose.ui.platform.testTag
+
+import androidx.compose.foundation.layout.height
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -112,6 +116,7 @@ fun HomeMenu(
     usingSystemWallpaper: Boolean,
     onWallpaper: () -> Unit,
     onUseAuraBackdrop: () -> Unit,
+    onWidgets: () -> Unit = {},
     onSettings: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -124,8 +129,9 @@ fun HomeMenu(
         Layout(
             content = {
                 Column(
-                    Modifier.width(236.dp).glass(RoundedCornerShape(26.dp), fill = Color(0xE62A2724)).padding(vertical = 8.dp)
+                    Modifier.width(236.dp).glass(RoundedCornerShape(26.dp), fill = Aura.Menu).padding(vertical = 8.dp)
                 ) {
+                    MenuItem(Glyph.Grid, "Widgets", onWidgets)
                     MenuItem(Glyph.External, "Wallpaper & style", onWallpaper)
                     if (usingSystemWallpaper) MenuItem(Glyph.Sparkle, "Use AURA backdrop", onUseAuraBackdrop)
                     MenuItem(Glyph.Gear, "AURA settings", onSettings)
@@ -156,13 +162,56 @@ private fun MenuItem(glyph: Glyph, label: String, onClick: () -> Unit) {
     }
 }
 
+/**
+ * The disclosure Google Play requires before AURA's accessibility service is turned on: what it
+ * does, what it can and can't see, and an explicit choice. Nothing is enabled from here; "Agree"
+ * only opens Android's Accessibility settings, where the person turns it on themselves.
+ */
+@Composable
+fun GestureDisclosure(onAgree: () -> Unit, onDecline: () -> Unit) {
+    Box(
+        Modifier.fillMaxSize().background(Aura.colors.scrim)
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = {}),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            Modifier.padding(20.dp).fillMaxWidth().glass(RoundedCornerShape(28.dp), fill = Aura.Menu).padding(22.dp)
+                .testTag("gesture_disclosure")
+        ) {
+            Text("AURA uses an Accessibility service", color = Aura.Ink, fontSize = 20.sp, fontFamily = Aura.Sans)
+            Spacer(Modifier.height(12.dp))
+            val points = listOf(
+                "What it's for: when you swipe down on AURA's home screen, it opens your notifications (one finger) or Quick Settings (two fingers). That's all it does.",
+                "What it can see: nothing. It can't read the screen, what you type, or what other apps show. It doesn't collect, store or share any data.",
+                "What it does: it only opens those two system panels when you swipe. Gemini never uses it.",
+                "Your choice: AURA works without it. You can turn it off any time in Settings → Accessibility → AURA gestures.",
+            )
+            points.forEach {
+                Text("•  $it", color = Aura.InkDim, fontSize = 14.sp, fontFamily = Aura.Sans, lineHeight = 20.sp, modifier = Modifier.padding(bottom = 8.dp))
+            }
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.End) {
+                Text(
+                    "No thanks", color = Aura.InkDim, fontSize = 15.sp,
+                    modifier = Modifier.clip(RoundedCornerShape(14.dp)).clickable(onClick = onDecline).padding(12.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    "Agree and continue", color = Aura.OnAccent, fontSize = 15.sp,
+                    modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(Aura.Accent).clickable(onClick = onAgree)
+                        .padding(horizontal = 18.dp, vertical = 11.dp),
+                )
+            }
+        }
+    }
+}
+
 /** One-time prompt shown if the system won't let AURA pull down the shade on its own. */
 @Composable
 fun GestureSetupBanner(onEnable: () -> Unit, onAppInfo: () -> Unit, onDismiss: () -> Unit) {
     Box(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(), contentAlignment = Alignment.TopCenter) {
         Column(
             Modifier.padding(16.dp).offset(y = 56.dp).fillMaxWidth()
-                .glass(RoundedCornerShape(26.dp), fill = Color(0xEB2A2724)).padding(18.dp)
+                .glass(RoundedCornerShape(26.dp), fill = Aura.Menu).padding(18.dp)
         ) {
             Text("Swipe down for notifications", color = Aura.Ink, fontSize = 17.sp, fontFamily = Aura.Sans)
             Spacer(Modifier.width(4.dp))
@@ -179,11 +228,11 @@ fun GestureSetupBanner(onEnable: () -> Unit, onAppInfo: () -> Unit, onDismiss: (
                     modifier = Modifier.clip(RoundedCornerShape(14.dp)).clickable(onClick = onDismiss).padding(12.dp),
                 )
                 Text(
-                    "App info", color = Aura.GeminiViolet, fontSize = 15.sp,
+                    "App info", color = Aura.Accent, fontSize = 15.sp,
                     modifier = Modifier.clip(RoundedCornerShape(14.dp)).clickable(onClick = onAppInfo).padding(12.dp),
                 )
                 Text(
-                    "Turn on", color = Aura.GeminiViolet, fontSize = 15.sp,
+                    "Turn on", color = Aura.Accent, fontSize = 15.sp,
                     modifier = Modifier.clip(RoundedCornerShape(14.dp)).clickable(onClick = onEnable).padding(12.dp),
                 )
             }

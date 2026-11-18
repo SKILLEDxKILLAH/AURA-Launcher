@@ -14,8 +14,13 @@ android {
         targetSdk = 37
         // versionName is what people see. versionCode only ever goes up so each build installs
         // over the last (pre-release builds already used 1–14).
-        versionCode = 16
-        versionName = "1.0.1"
+        versionCode = 17
+        versionName = "1.1.0"
+
+        // Where "Report this reply" sends reports (an HTTPS endpoint that accepts a JSON POST).
+        // Set auraReportUrl in gradle.properties or with -PauraReportUrl=… for store builds.
+        // Empty: reports open a pre-filled GitHub issue instead.
+        buildConfigField("String", "REPORT_URL", "\"${project.findProperty("auraReportUrl") ?: ""}\"")
     }
 
     // One stable signing key for debug and release builds. Google sign-in (OAuth) is registered
@@ -53,6 +58,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     testOptions {

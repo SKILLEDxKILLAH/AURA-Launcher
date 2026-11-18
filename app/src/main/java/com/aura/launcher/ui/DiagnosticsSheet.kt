@@ -38,7 +38,7 @@ import com.aura.launcher.ui.theme.Aura
 fun DiagnosticsSheet(results: List<CheckResult>, running: Boolean, onRunAgain: () -> Unit, onClose: () -> Unit) {
     val context = LocalContext.current
     Column(
-        Modifier.fillMaxSize().background(Color(0xF71D1B19)).systemBarsPadding()
+        Modifier.fillMaxSize().background(Aura.Surface).systemBarsPadding()
             .verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -46,7 +46,7 @@ fun DiagnosticsSheet(results: List<CheckResult>, running: Boolean, onRunAgain: (
             Spacer(Modifier.width(12.dp))
             Text("Gemini check", color = Aura.Ink, fontSize = 26.sp, fontFamily = Aura.Sans, modifier = Modifier.weight(1f))
             Text(
-                "Done", color = Aura.GeminiViolet, fontSize = 16.sp,
+                "Done", color = Aura.Accent, fontSize = 16.sp,
                 modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onClose).padding(10.dp),
             )
         }
@@ -59,7 +59,7 @@ fun DiagnosticsSheet(results: List<CheckResult>, running: Boolean, onRunAgain: (
                 Row(verticalAlignment = Alignment.Top) {
                     Text(
                         when (r.ok) { true -> "✓"; false -> "✗"; null -> "•" },
-                        color = when (r.ok) { true -> Aura.GeminiBlue; false -> Color(0xFFFFB4A9); null -> Aura.InkDim },
+                        color = when (r.ok) { true -> Aura.GeminiBlue; false -> Aura.Error; null -> Aura.InkDim },
                         fontSize = 16.sp, modifier = Modifier.width(22.dp),
                     )
                     Column {
@@ -70,7 +70,7 @@ fun DiagnosticsSheet(results: List<CheckResult>, running: Boolean, onRunAgain: (
             }
             if (running) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(Modifier.size(16.dp), color = Aura.GeminiViolet, strokeWidth = 2.dp)
+                    CircularProgressIndicator(Modifier.size(16.dp), color = Aura.Accent, strokeWidth = 2.dp)
                     Spacer(Modifier.width(10.dp))
                     Text("Checking…", color = Aura.InkDim, fontSize = 14.sp)
                 }
@@ -79,8 +79,8 @@ fun DiagnosticsSheet(results: List<CheckResult>, running: Boolean, onRunAgain: (
         Spacer(Modifier.height(16.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(
-                "Copy report", color = Color(0xFF1F1F1F), fontSize = 15.sp,
-                modifier = Modifier.clip(RoundedCornerShape(22.dp)).background(Color.White)
+                "Copy report", color = Aura.Surface.copy(alpha = 1f), fontSize = 15.sp,
+                modifier = Modifier.clip(RoundedCornerShape(22.dp)).background(Aura.Ink)
                     .clickable(enabled = !running && results.isNotEmpty()) {
                         context.getSystemService(ClipboardManager::class.java)
                             ?.setPrimaryClip(ClipData.newPlainText("AURA Gemini check", GeminiDiagnostics.report(results)))

@@ -3,6 +3,7 @@ package com.aura.launcher.ui
 import android.Manifest
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -102,8 +103,13 @@ fun GeminiSheet(
     onSelectModel: (String) -> Unit = {},
     onRunCheck: () -> Unit = {},
     onSelectThinking: (com.aura.launcher.data.ThinkingLevel) -> Unit = {},
+    onReport: (ChatItem, com.aura.launcher.gemini.ReportReason) -> Unit = { _, _ -> },
 ) {
     var panelOpen by rememberSaveable { mutableStateOf(false) }
+    var reporting by remember { mutableStateOf<ChatItem?>(null) }
+    reporting?.let { item ->
+        ReportDialog(onPick = { reason -> reporting = null; onReport(item, reason) }, onDismiss = { reporting = null })
+    }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var text by rememberSaveable { mutableStateOf("") }
@@ -128,7 +134,7 @@ fun GeminiSheet(
 
     Box(Modifier.fillMaxSize()) {
         Box(
-            Modifier.fillMaxSize().background(Color(0x99100E0C))
+            Modifier.fillMaxSize().background(Aura.colors.scrim.copy(alpha = 0.6f))
                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onDismiss)
         )
         Column(
@@ -138,7 +144,7 @@ fun GeminiSheet(
                 .statusBarsPadding()
                 .padding(top = 48.dp)
                 .clip(RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp))
-                .background(Color(0xF2262320))
+                .background(Aura.Sheet)
                 .navigationBarsPadding()
                 .imePadding()
                 .padding(horizontal = 18.dp, vertical = 16.dp)
@@ -197,9 +203,12 @@ fun GeminiSheet(
                 val listState = rememberLazyListState()
                 // Keep the newest message in view, including when the keyboard opens and the list shrinks.
                 val imeBottom = WindowInsets.ime.getBottom(LocalDensity.current)
-                LaunchedEffect(state.chat.size, state.busy, imeBottom) {
+                // While Gemini is writing, the last line grows: follow it too.
+                val growing = state.chat.lastOrNull()?.takeIf { it.streaming }?.text?.length ?: 0
+                val writing = state.chat.lastOrNull()?.let { it.streaming && it.role == ChatRole.GEMINI } == true
+                LaunchedEffect(state.chat.size, state.busy, imeBottom, growing / 80) {
                     // Index from the data, not layoutInfo (which is empty before the first layout).
-                    val last = state.chat.lastIndex + if (state.busy) 1 else 0
+                    val last = state.chat.lastIndex + if (state.busy && !writing) 1 else 0
                     if (last >= 0) listState.animateScrollToItem(last)
                 }
                 LazyColumn(
@@ -209,10 +218,11 @@ fun GeminiSheet(
                     modifier = Modifier.weight(1f, fill = false).heightIn(max = 380.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(state.chat) { ChatBubble(it) }
-                    if (state.busy) item {
+                    items(state.chat) { ChatBubble(it, onReport = { reporting = it }) }
+                    // The "working" line steps aside once the reply itself is appearing.
+                    if (state.busy && !writing) item {
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(6.dp)) {
-                            CircularProgressIndicator(Modifier.size(16.dp), color = Aura.GeminiViolet, strokeWidth = 2.dp)
+                            CircularProgressIndicator(Modifier.size(16.dp), color = Aura.Accent, strokeWidth = 2.dp)
                             Spacer(Modifier.width(10.dp))
                             Text("Working on it…", color = Aura.InkDim, fontSize = 14.sp)
                         }
@@ -225,7 +235,7 @@ fun GeminiSheet(
             Row(
                 Modifier.fillMaxWidth().height(60.dp)
                     .geminiGlow(30.dp, blur = 12.dp, alpha = if (voice.listening) 0.7f else 0.35f)
-                    .glass(shape, fill = Color(0xFF2E2A27), stroke = Aura.GeminiViolet.copy(alpha = 0.55f))
+                    .glass(shape, fill = Aura.Field, stroke = Aura.GeminiViolet.copy(alpha = 0.55f))
                     .padding(start = 20.dp, end = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -246,7 +256,7 @@ fun GeminiSheet(
                                 onValueChange = { text = it },
                                 singleLine = true,
                                 textStyle = TextStyle(color = Aura.Ink, fontSize = 17.sp, fontFamily = Aura.Sans),
-                                cursorBrush = SolidColor(Aura.GeminiViolet),
+                                cursorBrush = SolidColor(Aura.Accent),
                                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                                 keyboardActions = KeyboardActions(onSend = { submit(text) }),
                                 modifier = Modifier.fillMaxWidth().focusRequester(focus),
@@ -277,6 +287,7 @@ private fun SignInCard(signingIn: Boolean, error: String?, onSignIn: () -> Unit,
         Spacer(Modifier.height(18.dp))
         Row(
             Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(28.dp)).background(Color.White)
+                .border(1.dp, Aura.Stroke, RoundedCornerShape(28.dp))
                 .clickable(enabled = !signingIn, onClick = onSignIn),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
@@ -293,7 +304,7 @@ private fun SignInCard(signingIn: Boolean, error: String?, onSignIn: () -> Unit,
         }
         if (error != null) {
             Spacer(Modifier.height(12.dp))
-            Text(error, color = Color(0xFFFFB4A9), fontSize = 13.sp, fontFamily = Aura.Sans)
+            Text(error, color = Aura.Error, fontSize = 13.sp, fontFamily = Aura.Sans)
             SmallTextButton("Open AURA settings", onOpenSettings)
         }
         Spacer(Modifier.height(8.dp))
@@ -332,7 +343,7 @@ private fun ListeningButton(level: Float, onStop: () -> Unit) {
 }
 
 @Composable
-private fun ChatBubble(item: ChatItem) {
+private fun ChatBubble(item: ChatItem, onReport: () -> Unit = {}) {
     when (item.role) {
         ChatRole.USER -> Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
             Text(
@@ -341,21 +352,32 @@ private fun ChatBubble(item: ChatItem) {
                     .padding(horizontal = 16.dp, vertical = 10.dp),
             )
         }
-        ChatRole.GEMINI -> Row(verticalAlignment = Alignment.Top) {
-            AuraGlyph(Glyph.Sparkle, size = 18.dp, modifier = Modifier.padding(top = 3.dp))
-            Spacer(Modifier.width(10.dp))
-            Text(item.text, color = Aura.Ink, fontSize = 16.sp, fontFamily = Aura.Sans)
+        ChatRole.GEMINI -> Column {
+            Row(verticalAlignment = Alignment.Top) {
+                AuraGlyph(Glyph.Sparkle, size = 18.dp, modifier = Modifier.padding(top = 3.dp))
+                Spacer(Modifier.width(10.dp))
+                Text(item.text, color = Aura.Ink, fontSize = 16.sp, fontFamily = Aura.Sans)
+            }
+            // Every finished AI reply can be reported (Google Play's AI-content policy).
+            if (!item.streaming) {
+                Text(
+                    "Report", color = Aura.InkFaint, fontSize = 12.sp, fontFamily = Aura.Sans,
+                    modifier = Modifier.align(Alignment.End).clip(RoundedCornerShape(10.dp))
+                        .clickable(onClickLabel = "Report this reply", onClick = onReport)
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                )
+            }
         }
         ChatRole.ACTION -> Row(
-            Modifier.padding(start = 28.dp).glass(RoundedCornerShape(14.dp), fill = Color(0x14FFFFFF))
+            Modifier.padding(start = 28.dp).glass(RoundedCornerShape(14.dp), fill = Aura.Glass)
                 .padding(horizontal = 12.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(if (item.ok) "✓" else "!", color = if (item.ok) Aura.GeminiBlue else Color(0xFFFFB4A9), fontSize = 14.sp)
+            Text(if (item.ok) "✓" else "!", color = if (item.ok) Aura.GeminiBlue else Aura.Error, fontSize = 14.sp)
             Spacer(Modifier.width(8.dp))
             Text(item.text, color = Aura.InkDim, fontSize = 14.sp, fontFamily = Aura.Sans)
         }
-        ChatRole.ERROR -> Text(item.text, color = Color(0xFFFFB4A9), fontSize = 14.sp, modifier = Modifier.padding(start = 28.dp))
+        ChatRole.ERROR -> Text(item.text, color = Aura.Error, fontSize = 14.sp, modifier = Modifier.padding(start = 28.dp))
         ChatRole.THOUGHT -> ThoughtBubble(item)
         ChatRole.NOTICE -> Text("ⓘ  ${item.text}", color = Aura.InkFaint, fontSize = 13.sp, fontFamily = Aura.Sans, modifier = Modifier.padding(start = 28.dp))
     }
@@ -376,5 +398,37 @@ private fun SmallTextButton(label: String, onClick: () -> Unit) {
     Text(
         label, color = Aura.InkDim, fontSize = 14.sp, fontFamily = Aura.Sans,
         modifier = Modifier.clip(RoundedCornerShape(18.dp)).clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp),
+    )
+}
+
+/** Asks why a reply is being reported. */
+@Composable
+private fun ReportDialog(onPick: (com.aura.launcher.gemini.ReportReason) -> Unit, onDismiss: () -> Unit) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Aura.Menu.copy(alpha = 1f),
+        title = { Text("Report this reply", color = Aura.Ink, fontFamily = Aura.Sans) },
+        text = {
+            Column {
+                Text(
+                    "Tell the developer what's wrong. Only this reply and the reason are sent.",
+                    color = Aura.InkDim, fontSize = 14.sp, fontFamily = Aura.Sans, modifier = Modifier.padding(bottom = 8.dp),
+                )
+                com.aura.launcher.gemini.ReportReason.entries.forEach { r ->
+                    Text(
+                        r.label, color = Aura.Ink, fontSize = 16.sp, fontFamily = Aura.Sans,
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onPick(r) }
+                            .padding(horizontal = 8.dp, vertical = 12.dp),
+                    )
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            Text(
+                "Cancel", color = Aura.Accent, fontSize = 15.sp,
+                modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onDismiss).padding(10.dp),
+            )
+        },
     )
 }

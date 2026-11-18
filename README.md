@@ -6,6 +6,10 @@ A minimalist home screen for **Android 17**, with Google Gemini built into the h
 |---|---|---|
 | ![Home](docs/screenshots/home.png) | ![Drawer](docs/screenshots/drawer.png) | ![Scrub](docs/screenshots/drawer_scrub.png) |
 
+| Light theme | Grid drawer | Hold an app |
+|---|---|---|
+| ![Light](docs/screenshots/home_light.png) | ![Grid](docs/screenshots/drawer_grid.png) | ![App menu](docs/screenshots/drawer_app_menu.png) |
+
 <sub>These screenshots come from the JVM screenshot test using sample data. On a real phone, app icons, the Google logo and dock icons show up.</sub>
 
 ## Features
@@ -17,11 +21,29 @@ A minimalist home screen for **Android 17**, with Google Gemini built into the h
 - The AURA backdrop: a charcoal sky, a diagonal shaft of warm light, and sand dunes with glowing ridges. You can switch to your system wallpaper in settings.
 - A Gemini card above the dock, with nothing else in the way.
 - A dock with your real default Phone, Messages, Browser, Photos and Camera apps.
+- **Widgets:** press and hold an empty spot → **Widgets**, or Settings → Home → Add a widget. Widgets stack between the clock and Gemini. Hold one to make it taller or shorter, move it or remove it.
+
+### Look
+Settings → Look:
+- **Theme:** Dark, Light, or Match phone.
+- **Colors:** AURA sand, or your wallpaper's colors (Material You), including the backdrop.
+- **Themed icons:** single-color icons tinted to the theme, for apps that provide them.
+
+On a system wallpaper, home-screen text switches between light and dark to suit the wallpaper.
+
+### App drawer
+- **Layouts:** List, Compact or Grid (Settings → App drawer).
+- The big letter shrinks as you scroll, so more apps fit.
+- **Hold any app** for its shortcuts ("New message", "Navigate home"…), favorites, **Hide from app drawer**, App info and Uninstall. Hidden apps still show up in search.
+- Suggested and Recent apps at the top, plus a one-time tips card.
+- Optionally open the keyboard as soon as the drawer opens.
 
 ### Gemini, built into the launcher
 Gemini runs **inside AURA**. It never opens the Gemini app. Tap the Gemini card, the bar or the sparkle button, or ask from drawer search.
 
 - **First use:** tap **Continue with Google**, pick your account and allow access. That's the only setup on the phone. After that, access tokens refresh silently in the background.
+- **Replies appear as they're written**, and so does Gemini's thinking.
+- **Every reply has a Report link**, for anything offensive or wrong.
 - **Voice:** the mic listens inline with live transcription. It uses on-device speech recognition when available and opens no dialog or other app.
 - **Gemini acts on the phone** through function calling:
 
@@ -124,6 +146,8 @@ Swipe down anywhere on the home screen: **one finger** opens notifications and *
 
 ## Install
 Download the APK from the **[latest release](https://github.com/SKILLEDxKILLAH/AURA-Launcher/releases/latest)** and open it on your Android 17 phone. Then press Home and choose **AURA**, or go to **Settings → Set AURA as your home app**. To use Gemini, see [docs/GEMINI_SETUP.md](docs/GEMINI_SETUP.md).
+
+Publishing on Google Play? See [docs/PLAY_RELEASE.md](docs/PLAY_RELEASE.md) and the [privacy policy](docs/PRIVACY.md).
 
 ## Build
 

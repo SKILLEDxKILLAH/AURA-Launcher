@@ -40,6 +40,26 @@ class GoogleAccountAuth(private val context: Context) {
     private val mutex = Mutex()
     private var token: String? = null
     private var tokenExpiresAt = 0L
+    private val sp = context.getSharedPreferences("aura_google_auth", Context.MODE_PRIVATE)
+
+    /**
+     * AURA asks for the narrowest access first (Gemini only). If Google ever says that isn't
+     * enough, it switches to the broader Cloud scope once and remembers that.
+     */
+    private var broadScopes: Boolean
+        get() = sp.getBoolean(K_BROAD, false)
+        set(v) { sp.edit().putBoolean(K_BROAD, v).apply() }
+
+    private val scopes get() = if (broadScopes) SCOPES else NARROW_SCOPES
+
+    /** Called when Gemini refused the token for missing scope; returns true if a retry may help. */
+    suspend fun widenScopes(): Boolean = mutex.withLock {
+        if (broadScopes) return@withLock false
+        broadScopes = true
+        token = null
+        tokenExpiresAt = 0L
+        true
+    }
 
     data class Profile(val email: String, val name: String?)
 
@@ -70,7 +90,7 @@ class GoogleAccountAuth(private val context: Context) {
         if (email != null) {
             runCatching {
                 client.revokeAccess(
-                    RevokeAccessRequest.builder().setAccount(Account(email, "com.google")).setScopes(SCOPES).build()
+                    RevokeAccessRequest.builder().setAccount(Account(email, "com.google")).setScopes(scopes).build()
                 ).await()
             }
         }
@@ -79,7 +99,7 @@ class GoogleAccountAuth(private val context: Context) {
     }
 
     private suspend fun authorize(interactive: Boolean): AuthorizationResult {
-        val request = AuthorizationRequest.builder().setRequestedScopes(SCOPES).build()
+        val request = AuthorizationRequest.builder().setRequestedScopes(scopes).build()
         val first = try {
             client.authorize(request).await()
         } catch (e: ApiException) {
@@ -129,13 +149,20 @@ class GoogleAccountAuth(private val context: Context) {
     }
 
     companion object {
-        /** Google's documented scopes for calling the Gemini API with user credentials, plus the user's email. */
+        /** The Gemini API with the user's own credentials, plus their email (shown in AURA). */
+        val NARROW_SCOPES = listOf(
+            Scope("https://www.googleapis.com/auth/generative-language.retriever"),
+            Scope("https://www.googleapis.com/auth/userinfo.email"),
+        )
+
+        /** Fallback: also Google Cloud, as in Google's gcloud instructions. */
         val SCOPES = listOf(
             Scope("https://www.googleapis.com/auth/generative-language.retriever"),
             Scope("https://www.googleapis.com/auth/cloud-platform"),
             Scope("https://www.googleapis.com/auth/userinfo.email"),
         )
         private const val TOKEN_LIFETIME_MS = 50 * 60 * 1000L
+        private const val K_BROAD = "broad_scopes"
 
         /** SHA-1 of the certificate that signed this APK, formatted for the Google Cloud console. */
         fun signingSha1(context: Context): String = runCatching {

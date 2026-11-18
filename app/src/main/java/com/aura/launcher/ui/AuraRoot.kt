@@ -43,12 +43,18 @@ import com.aura.launcher.ActivityBridge
 import com.aura.launcher.MainViewModel
 import com.aura.launcher.data.DockResolver
 import com.aura.launcher.data.SettingShortcuts
+import com.aura.launcher.ui.theme.Aura
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 @Composable
-fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
+fun AuraRoot(
+    vm: MainViewModel,
+    homePalette: com.aura.launcher.ui.theme.AuraPalette = Aura.colors,
+    requestPermissions: (List<String>) -> Unit,
+) {
     val context = LocalContext.current
+    val panelPalette = Aura.colors
     val prefs = vm.prefs
     val apps by vm.apps.collectAsStateWithLifecycle()
     val counts by vm.launchCounts.collectAsStateWithLifecycle()
@@ -67,9 +73,10 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
     var homeMenuAt by remember { mutableStateOf<androidx.compose.ui.geometry.Offset?>(null) }
     val view = androidx.compose.ui.platform.LocalView.current
 
-    val favorites = remember(apps, prefs.favorites, counts) {
-        val pinned = apps.filter { it.key in prefs.favorites }
-        val frequent = apps.filter { (counts[it.key] ?: 0) >= 3 && it.key !in prefs.favorites }
+    val favorites = remember(apps, prefs.favorites, counts, prefs.hiddenApps) {
+        val visible = apps.filter { it.key !in prefs.hiddenApps }
+        val pinned = visible.filter { it.key in prefs.favorites }
+        val frequent = visible.filter { (counts[it.key] ?: 0) >= 3 && it.key !in prefs.favorites }
             .sortedByDescending { counts[it.key] ?: 0 }
         (pinned + frequent).take(8)
     }
@@ -91,10 +98,13 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
                 else -> 0f
             }
             settleJob?.cancel()
+            val wasOpen = drawer >= 0.999f
             settleJob = scope.launch {
                 animate(drawer, target, initialVelocity = velocity / widthPx, animationSpec = spring(dampingRatio = 0.88f, stiffness = 420f)) { v, _ ->
                     drawer = v
                 }
+                // "Open keyboard with drawer": go straight to search when the drawer opens.
+                if (target == 1f && !wasOpen && prefs.drawerKeyboard) focusToken++
                 if (target == 0f) {
                     query = ""
                     focusManager.clearFocus()
@@ -181,23 +191,53 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
         BackHandler(enabled = vm.geminiSheetOpen) { vm.geminiSheetOpen = false }
         BackHandler(enabled = vm.settingsOpen && !vm.diagnosticsOpen) { vm.settingsOpen = false }
         BackHandler(enabled = vm.diagnosticsOpen) { vm.diagnosticsOpen = false }
+        BackHandler(enabled = vm.widgetPickerOpen) { vm.widgetPickerOpen = false }
+        BackHandler(enabled = vm.gestureDisclosureOpen) { vm.declineGestureDisclosure() }
 
         val dragState = rememberDraggableState { routeDrag(it) }
 
+        // Status bar icons: dark on light screens. Panels use the theme; home uses the wallpaper's.
+        val window = (context as? android.app.Activity)?.window
+        val panelUp = vm.settingsOpen || vm.diagnosticsOpen || vm.widgetPickerOpen || feed > 0.5f
+        val lightBars = if (panelUp) panelPalette.isLight else homePalette.isLight
+        androidx.compose.runtime.SideEffect {
+            window?.let { w ->
+                val c = androidx.core.view.WindowCompat.getInsetsController(w, w.decorView)
+                c.isAppearanceLightStatusBars = lightBars
+                c.isAppearanceLightNavigationBars = lightBars
+            }
+        }
+
         // ---- Background --------------------------------------------------------------------
+        com.aura.launcher.ui.theme.ProvidePalette(homePalette) {
         if (prefs.useAuraBackdrop) {
             AuraBackdrop(drift = drawer)
         } else {
-            // Keep white text legible over any system wallpaper.
+            // Keep text legible over any system wallpaper.
+            val wallScrim = if (Aura.colors.isLight) Color.White else Color.Black
             Box(
                 Modifier.fillMaxSize().background(
                     androidx.compose.ui.graphics.Brush.verticalGradient(
-                        0f to Color(0x66000000), 0.35f to Color(0x1A000000), 0.6f to Color(0x1A000000), 1f to Color(0x80000000),
+                        0f to wallScrim.copy(alpha = 0.4f), 0.35f to wallScrim.copy(alpha = 0.1f),
+                        0.6f to wallScrim.copy(alpha = 0.1f), 1f to wallScrim.copy(alpha = 0.5f),
                     )
                 )
             )
         }
-        Box(Modifier.fillMaxSize().graphicsLayer { alpha = maxOf(drawer, feed) }.background(Color(0x59000000)))
+        Box(Modifier.fillMaxSize().graphicsLayer { alpha = maxOf(drawer, feed) }.background(Aura.colors.veil))
+        }
+
+        // Press-and-hold menu on any app (drawer, suggestions, search, dock).
+        val menuActions = AppMenuActions(
+            launchShortcut = vm::launchShortcut,
+            toggleFavorite = { prefs.toggleFavorite(it.key) },
+            toggleHidden = { prefs.toggleHidden(it.key) },
+            appInfo = vm.repo::openAppInfo,
+            uninstall = vm.repo::uninstall,
+            isFavorite = { it.key in prefs.favorites },
+            isHidden = { it.key in prefs.hiddenApps },
+        )
+        val dockEntry = { item: com.aura.launcher.data.DockItem -> apps.firstOrNull { it.packageName == item.packageName && !it.isWork } }
 
         // ---- Home --------------------------------------------------------------------------
         val openGoogle = {
@@ -216,7 +256,7 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
             },
             onLongPress = { vm.settingsOpen = true },
         )
-        if (drawer < 0.999f && feed < 0.999f) {
+        if (drawer < 0.999f && feed < 0.999f) com.aura.launcher.ui.theme.ProvidePalette(homePalette) {
             HomeScreen(
                 repo = vm.repo,
                 dock = vm.dock,
@@ -241,6 +281,9 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
                     launchDock = vm::launchDock,
                 ),
                 topLine = topLine,
+                dockEntry = dockEntry,
+                menuActions = menuActions,
+                widgets = vm.widgets,
                 modifier = Modifier
                     .graphicsLayer {
                         alpha = (1f - maxOf(drawer, feed) * 2.2f).coerceIn(0f, 1f)
@@ -295,9 +338,10 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
         }
 
         // ---- App drawer --------------------------------------------------------------------
-        if (drawer > 0.001f) {
+        if (drawer > 0.001f) com.aura.launcher.ui.theme.ProvidePalette(homePalette) {
+            val hidden = prefs.hiddenApps
             AppDrawer(
-                apps = apps,
+                apps = if (hidden.isEmpty()) apps else apps.filter { it.key !in hidden },
                 favorites = favorites,
                 favoriteKeys = prefs.favorites,
                 repo = vm.repo,
@@ -323,10 +367,15 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
                     launchDock = vm::launchDock,
                 ),
                 topLine = topLine,
-                suggested = vm.suggested,
-                recent = vm.recent,
+                suggested = vm.suggested.filter { it.key !in hidden },
+                recent = vm.recent.filter { it.key !in hidden },
                 showGeminiBar = prefs.drawerGeminiBar,
                 showGeminiButton = prefs.drawerGeminiButton,
+                layout = prefs.drawerLayout,
+                menuActions = menuActions,
+                showTip = !prefs.drawerTipSeen,
+                onTipDismiss = prefs::markDrawerTipSeen,
+                dockEntry = dockEntry,
                 modifier = Modifier
                     .graphicsLayer {
                         alpha = (drawer * 1.5f).coerceIn(0f, 1f)
@@ -366,6 +415,7 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
                 onSelectModel = vm::selectModel,
                 onRunCheck = vm::runDiagnostics,
                 onSelectThinking = vm::selectThinking,
+                onReport = vm::reportReply,
             )
         }
 
@@ -375,6 +425,7 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
                 usingSystemWallpaper = !prefs.useAuraBackdrop,
                 onWallpaper = { homeMenuAt = null; vm.openWallpaperPicker() },
                 onUseAuraBackdrop = { homeMenuAt = null; prefs.updateUseAuraBackdrop(true) },
+                onWidgets = { homeMenuAt = null; vm.widgetPickerOpen = true },
                 onSettings = { homeMenuAt = null; vm.settingsOpen = true },
                 onDismiss = { homeMenuAt = null },
             )
@@ -382,6 +433,14 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
 
         AnimatedVisibility(vm.gestureSetupNeeded, enter = fadeIn(), exit = fadeOut()) {
             GestureSetupBanner(onEnable = vm::enableGestureService, onAppInfo = vm::openAuraAppInfo, onDismiss = vm::dismissGestureHint)
+        }
+
+        AnimatedVisibility(vm.widgetPickerOpen, enter = fadeIn() + slideInVertically { it / 4 }, exit = fadeOut()) {
+            WidgetPicker(vm.widgets, vm.repo, onPick = vm::addWidget, onClose = { vm.widgetPickerOpen = false })
+        }
+
+        AnimatedVisibility(vm.gestureDisclosureOpen, enter = fadeIn(), exit = fadeOut()) {
+            GestureDisclosure(onAgree = vm::acceptGestureDisclosure, onDecline = vm::declineGestureDisclosure)
         }
 
         AnimatedVisibility(vm.diagnosticsOpen, enter = fadeIn(), exit = fadeOut()) {
@@ -397,6 +456,9 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
                 onSignOut = { vm.signOut() },
                 onRunCheck = vm::runDiagnostics,
                 requestPermissions = requestPermissions,
+                apps = apps,
+                onAddWidget = { vm.settingsOpen = false; vm.widgetPickerOpen = true },
+                onEnableGestures = { vm.settingsOpen = false; vm.enableGestureService() },
             ) { vm.settingsOpen = false }
         }
     }
