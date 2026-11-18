@@ -12,6 +12,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.aura.launcher.data.AppEntry
+import com.aura.launcher.data.AppPredictor
 import com.aura.launcher.data.AppRepository
 import com.aura.launcher.data.AuraPrefs
 import com.aura.launcher.data.DockItem
@@ -92,10 +93,44 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun launch(entry: AppEntry) {
         repo.launch(entry)
         resetWhenStopped = true
+        refreshSuggestions()
     }
 
     fun launchDock(item: DockItem) {
-        ActivityBridge.start(context, item.intent)
+        if (ActivityBridge.start(context, item.intent)) repo.recordPackage(item.packageName)
+    }
+
+    // ---- Suggested / Recent ---------------------------------------------------------------------
+
+    var suggested by mutableStateOf<List<AppEntry>>(emptyList())
+        private set
+    var recent by mutableStateOf<List<AppEntry>>(emptyList())
+        private set
+    var usageAccess by mutableStateOf(false)
+        private set
+
+    /** Recomputes predictions for the current time of day from AURA's log + Android usage history. */
+    fun refreshSuggestions() {
+        viewModelScope.launch {
+            usageAccess = repo.hasUsageAccess()
+            val all = apps.value
+            if (all.isEmpty()) return@launch
+            val byKey = all.associateBy { it.key }
+            val events = repo.launchLog.value + repo.systemLaunches()
+            val keys = byKey.keys
+            val predicted = AppPredictor.suggest(events, AppPredictor.now(), keys, limit = 5).toMutableList()
+            // Cold start: fill with most-launched apps so the row is useful from day one.
+            if (predicted.size < 5) {
+                launchCounts.value.entries.sortedByDescending { it.value }.map { it.key }
+                    .filter { it in keys && it !in predicted }.take(5 - predicted.size).let(predicted::addAll)
+            }
+            suggested = predicted.mapNotNull(byKey::get)
+            recent = AppPredictor.recent(events, keys, limit = 5).mapNotNull(byKey::get)
+        }
+    }
+
+    fun openUsageAccessSettings() {
+        ActivityBridge.start(context, Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
     }
 
     fun onHomeIntent() {
@@ -113,6 +148,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun onResumed() {
         checkWallpaperChanged()
+        refreshSuggestions()
         dock = DockResolver.resolve(context)
         weatherNeedsPermission = !WeatherService.hasPermission(context)
         val now = System.currentTimeMillis()

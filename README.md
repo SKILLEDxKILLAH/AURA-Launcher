@@ -85,6 +85,12 @@ Then tap **Copy report** to share the results for troubleshooting. The report co
   - The drawer dims, and that letter's apps appear on the left, centered on the bubble.
   - Lift your finger to jump to the section, or slide left onto an app and lift to launch it.
   - ☆ at the top of the column holds your favorites and most-used apps.
+- **Suggested / Recent** row at the top of the drawer:
+  - **Suggested** predicts the five apps you're most likely to want now. It learns on the phone from your history: recent use counts more, so does use at a similar time of day, and weekdays are kept separate from weekends.
+  - **Recent** shows the last five apps you opened.
+  - Optional: Settings → App suggestions → **Learn from all app use** (Android usage access) also counts apps opened from notifications or links.
+  - Nothing leaves the device.
+- The scroll preview highlights every app: any point along a row's height counts. When a letter has more apps than fit, sliding your finger down scrolls through them all.
 - Long-press an app to add it to favorites, open App info, or uninstall it.
 - Work-profile apps are included and badged.
 

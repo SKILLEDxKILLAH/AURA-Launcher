@@ -323,6 +323,8 @@ fun AuraRoot(vm: MainViewModel, requestPermissions: (List<String>) -> Unit) {
                     launchDock = vm::launchDock,
                 ),
                 topLine = topLine,
+                suggested = vm.suggested,
+                recent = vm.recent,
                 modifier = Modifier
                     .graphicsLayer {
                         alpha = (drawer * 1.5f).coerceIn(0f, 1f)

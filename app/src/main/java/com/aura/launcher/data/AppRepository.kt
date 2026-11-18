@@ -122,6 +122,7 @@ class AppRepository(private val context: Context) {
         try {
             launcherApps.startMainActivity(entry.component, entry.user, bounds, null)
             bump(entry.key)
+            record(entry.key)
         } catch (e: Exception) {
             Toast.makeText(context, "Couldn't open ${entry.label}", Toast.LENGTH_SHORT).show()
         }
@@ -157,6 +158,61 @@ class AppRepository(private val context: Context) {
         }.sortedByDescending { it.second }.take(limit).map { it.first }
     }
 
+    // ---- Launch history (for Suggested / Recent) -------------------------------------------------
+
+    private val logPrefs = context.getSharedPreferences("aura_launch_log", Context.MODE_PRIVATE)
+    private val _launchLog = MutableStateFlow(readLog())
+    /** AURA's own record of app openings, newest last; capped and kept only on this device. */
+    val launchLog: StateFlow<List<LaunchEvent>> = _launchLog
+
+    private fun record(key: String) {
+        val next = (_launchLog.value + LaunchEvent(key, System.currentTimeMillis())).takeLast(MAX_LOG)
+        _launchLog.value = next
+        logPrefs.edit { putString("log", next.joinToString("\n") { "${it.time}\t${it.key}" }) }
+    }
+
+    /** Records a launch that happened outside the drawer (e.g. the dock) by package. */
+    fun recordPackage(pkg: String) {
+        _apps.value.firstOrNull { it.packageName == pkg && !it.isWork }?.let { record(it.key) }
+    }
+
+    private fun readLog(): List<LaunchEvent> =
+        logPrefs.getString("log", null).orEmpty().lineSequence().mapNotNull { line ->
+            val tab = line.indexOf('\t')
+            if (tab <= 0) null else line.substring(0, tab).toLongOrNull()?.let { LaunchEvent(line.substring(tab + 1), it) }
+        }.toList()
+
+    /** True when Android's usage access is granted to AURA (Settings → Usage access). */
+    fun hasUsageAccess(): Boolean = hasUsageAccess(context)
+
+    /**
+     * App openings from Android's usage history (last 21 days), mapped to drawer entries, so
+     * apps opened from notifications or links count too. Empty without usage access.
+     */
+    suspend fun systemLaunches(): List<LaunchEvent> = kotlinx.coroutines.withContext(Dispatchers.IO) {
+        if (!hasUsageAccess()) return@withContext emptyList()
+        val usm = context.getSystemService(android.app.usage.UsageStatsManager::class.java)
+        val byPackage = _apps.value.filter { !it.isWork }.associateBy { it.packageName }
+        val end = System.currentTimeMillis()
+        val events = runCatching { usm.queryEvents(end - 21L * 86_400_000L, end) }.getOrNull() ?: return@withContext emptyList()
+        val out = ArrayList<LaunchEvent>()
+        val e = android.app.usage.UsageEvents.Event()
+        var lastPkg: String? = null
+        var lastTime = 0L
+        while (events.hasNextEvent()) {
+            events.getNextEvent(e)
+            if (e.eventType != android.app.usage.UsageEvents.Event.ACTIVITY_RESUMED) continue
+            val pkg = e.packageName
+            if (pkg == context.packageName) continue
+            // Collapse activity switches inside one app into a single opening.
+            if (pkg == lastPkg && e.timeStamp - lastTime < 5 * 60_000) { lastTime = e.timeStamp; continue }
+            lastPkg = pkg
+            lastTime = e.timeStamp
+            byPackage[pkg]?.let { out += LaunchEvent(it.key, e.timeStamp) }
+        }
+        out
+    }
+
     private fun bump(key: String) {
         val next = (_launchCounts.value[key] ?: 0) + 1
         _launchCounts.value = _launchCounts.value + (key to next)
@@ -168,6 +224,13 @@ class AppRepository(private val context: Context) {
 
     companion object {
         const val ICON_PX = 192
+        private const val MAX_LOG = 600
+
+        fun hasUsageAccess(context: Context): Boolean {
+            val ops = context.getSystemService(android.app.AppOpsManager::class.java)
+            val mode = ops.checkOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), context.packageName)
+            return mode == android.app.AppOpsManager.MODE_ALLOWED
+        }
 
         fun letterOf(label: String): String {
             val first = label.trimStart().firstOrNull() ?: return "#"

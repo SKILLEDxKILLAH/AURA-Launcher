@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -27,11 +28,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
@@ -69,7 +72,36 @@ class ScrubState {
     var track by mutableStateOf(Rect.Zero)
     var selected by mutableStateOf<String?>(null)
     var hoveredKey by mutableStateOf<String?>(null)
-    val rowBounds = mutableStateMapOf<String, Rect>()
+
+    // Geometry of the preview list (root coordinates), published by PreviewList each layout.
+    var rowsTop by mutableFloatStateOf(0f)
+    var rowHeight by mutableFloatStateOf(0f)
+    var viewportHeight by mutableFloatStateOf(0f)
+    var rowCount by mutableIntStateOf(0)
+    /** How far the preview list is scrolled; driven by the finger when the list overflows. */
+    var scroll by mutableFloatStateOf(0f)
+    /** True while the finger is over the preview (with hysteresis so it doesn't flicker). */
+    var inPreview by mutableStateOf(false)
+
+    /**
+     * Index of the preview row under a finger at [y], or -1. Every pixel of a row's height
+     * counts (no gaps), and when the list is taller than the screen the finger's position
+     * scrubs proportionally through it, so every app is reachable.
+     */
+    fun hoverIndexAt(y: Float): Int {
+        if (rowCount == 0 || rowHeight <= 0f || viewportHeight <= 0f) return -1
+        if (y < rowsTop - rowHeight || y > rowsTop + viewportHeight + rowHeight) return -1
+        val rel = (y - rowsTop).coerceIn(0f, viewportHeight)
+        val maxScroll = (rowCount * rowHeight - viewportHeight).coerceAtLeast(0f)
+        scroll = if (maxScroll > 0f) maxScroll * (rel / viewportHeight) else 0f
+        return ((rel + scroll) / rowHeight).toInt().coerceIn(0, rowCount - 1)
+    }
+
+    fun resetPreview() {
+        hoveredKey = null
+        scroll = 0f
+        inPreview = false
+    }
 }
 
 /** Geometry of the arc, in pixels. */
@@ -221,14 +253,26 @@ fun AlphabetArcOverlay(
 private fun PreviewList(state: ScrubState, geometry: ArcGeometry, apps: List<AppEntry>, repo: AppRepository, anchorY: Float) {
     val density = LocalDensity.current
     val track = state.track
-    val rowHeight = with(density) { 76.dp.toPx() }
     val headerHeight = with(density) { 56.dp.toPx() }
-    val maxRows = max(1, ((track.height - headerHeight) / rowHeight).toInt())
-    val listHeight = headerHeight + rowHeight * min(max(apps.size, 1), maxRows)
+    val available = (track.height - headerHeight).coerceAtLeast(1f)
+    // Roomy rows normally; compact rows when a letter has many apps; beyond that the list scrolls.
+    val roomy = with(density) { 72.dp.toPx() }
+    val compact = with(density) { 56.dp.toPx() }
+    val rowHeight = if (apps.size * roomy <= available) roomy else compact
+    val viewport = (apps.size * rowHeight).coerceAtMost(available).coerceAtLeast(rowHeight)
+    val listHeight = headerHeight + viewport
     // Center the group on the selected letter, like the bubble, while staying on screen.
     val targetTop = (anchorY - listHeight / 2f).coerceIn(track.top, max(track.top, track.bottom - listHeight))
     val top by animateFloatAsState(targetTop, spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMedium), label = "previewTop")
     val maxWidth = with(density) { (geometry.previewEdge(track) - 8.dp.toPx()).toDp() }
+    val isCompact = rowHeight == compact
+
+    SideEffect {
+        state.rowsTop = top + headerHeight
+        state.rowHeight = rowHeight
+        state.viewportHeight = viewport
+        state.rowCount = apps.size
+    }
 
     AnimatedContent(
         targetState = state.selected to apps,
@@ -250,7 +294,7 @@ private fun PreviewList(state: ScrubState, geometry: ArcGeometry, apps: List<App
             Text(
                 if (letter == FAVORITES_LETTER) "Favorites" else letter.orEmpty(),
                 color = Aura.Ink, fontSize = 26.sp, fontFamily = Aura.Sans,
-                modifier = Modifier.padding(start = 10.dp, bottom = 12.dp),
+                modifier = Modifier.height(with(density) { headerHeight.toDp() }).padding(start = 10.dp, top = 4.dp),
             )
             if (list.isEmpty()) {
                 Text(
@@ -258,30 +302,32 @@ private fun PreviewList(state: ScrubState, geometry: ArcGeometry, apps: List<App
                     color = Aura.InkDim, fontSize = 15.sp, modifier = Modifier.padding(start = 10.dp),
                 )
             }
-            list.take(maxRows).forEach { app ->
-                val hovered = state.hoveredKey == app.key
-                Row(
-                    Modifier
-                        .onGloballyPositioned { state.rowBounds[app.key] = it.boundsInRoot() }
-                        .graphicsLayer {
-                            val s = if (hovered) 1.06f else 1f
-                            scaleX = s; scaleY = s
+            val rowDp = with(density) { rowHeight.toDp() }
+            Box(Modifier.height(with(density) { viewport.toDp() }).clipToBounds()) {
+                Column(Modifier.offset { IntOffset(0, -state.scroll.roundToInt()) }) {
+                    list.forEach { app ->
+                        val hovered = state.hoveredKey == app.key
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(rowDp)
+                                .graphicsLayer {
+                                    val s = if (hovered) 1.05f else 1f
+                                    scaleX = s; scaleY = s
+                                }
+                                .then(if (hovered) Modifier.glass(RoundedCornerShape(24.dp), fill = Aura.GlassStrong) else Modifier)
+                                .padding(horizontal = 10.dp),
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                        ) {
+                            AppIcon(app, repo, if (isCompact) 40.dp else 52.dp)
+                            Spacer(Modifier.width(if (isCompact) 14.dp else 18.dp))
+                            Text(
+                                app.label, color = Aura.Ink, fontSize = if (isCompact) 18.sp else 21.sp, fontFamily = Aura.Sans,
+                                fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            )
                         }
-                        .then(if (hovered) Modifier.glass(RoundedCornerShape(24.dp), fill = Aura.GlassStrong) else Modifier)
-                        .padding(horizontal = 10.dp, vertical = 8.dp),
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                ) {
-                    AppIcon(app, repo, 54.dp)
-                    Spacer(Modifier.width(18.dp))
-                    Text(
-                        app.label, color = Aura.Ink, fontSize = 21.sp, fontFamily = Aura.Sans,
-                        fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    )
+                    }
                 }
-                Spacer(Modifier.height(2.dp))
-            }
-            if (list.size > maxRows) {
-                Text("+${list.size - maxRows} more", color = Aura.InkDim, fontSize = 15.sp, modifier = Modifier.padding(start = 10.dp, top = 6.dp))
             }
         }
     }

@@ -92,6 +92,19 @@ fun SettingsScreen(
             ToggleRow("Fahrenheit", null, prefs.fahrenheit, prefs::updateFahrenheit)
         }
 
+        Group("App suggestions") {
+            Text(
+                "The top of the app drawer suggests apps you're likely to want now, learned on this phone from when " +
+                    "and how often you open them. Nothing leaves your device.",
+                color = Aura.InkDim, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            )
+            val usageOn = remember { com.aura.launcher.data.AppRepository.hasUsageAccess(context) }
+            ActionRow(
+                "Learn from all app use",
+                (if (usageOn) "On" else "Off") + " · also count apps opened from notifications, links and other apps (Usage access)",
+            ) { ActivityBridge.start(context, Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
+        }
+
         Group("Gestures") {
             val gesturesOn = remember { com.aura.launcher.system.SystemPanels.isGestureServiceEnabled(context) }
             ActionRow(
@@ -178,7 +191,7 @@ fun SettingsScreen(
         }
 
         Group("About") {
-            Text("AURA Launcher 1.8.1 · Built for Android 17", color = Aura.InkDim, fontSize = 14.sp, modifier = Modifier.padding(6.dp))
+            Text("AURA Launcher 1.9 · Built for Android 17", color = Aura.InkDim, fontSize = 14.sp, modifier = Modifier.padding(6.dp))
             Text("Tips: swipe left for apps · swipe right for your news feed · swipe down for notifications (two fingers: Quick Settings) · press and hold for wallpaper & settings · drag the letters on the right · tap the mic to talk to Gemini · tap the top-left text to edit it, long-press it for these settings.",
                 color = Aura.InkFaint, fontSize = 13.sp, modifier = Modifier.padding(6.dp))
         }

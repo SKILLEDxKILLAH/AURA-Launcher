@@ -86,4 +86,37 @@ class HomeGesturesTest {
         assertNull(longPressAt)
         assertTrue(horizontalDrag < 0f)
     }
+
+}
+
+/** Scrub-preview hit testing: every app is reachable, including in long lists and between rows. */
+class ScrubHoverTest {
+    private fun state(count: Int, rowHeight: Float, viewport: Float) = com.aura.launcher.ui.ScrubState().apply {
+        rowsTop = 100f; this.rowHeight = rowHeight; viewportHeight = viewport; rowCount = count
+    }
+
+    @Test
+    fun everyPixelOfARowCountsNoGaps() {
+        val s = state(count = 5, rowHeight = 50f, viewport = 250f)
+        val hits = (100..349).map { s.hoverIndexAt(it.toFloat()) }
+        assertEquals(listOf(0, 1, 2, 3, 4), hits.distinct())
+        assertTrue(hits.none { it < 0 })
+    }
+
+    @Test
+    fun longListsScrubSoEveryAppIsReachable() {
+        // 30 apps but only room for 10 rows.
+        val s = state(count = 30, rowHeight = 50f, viewport = 500f)
+        val reached = (100..600).map { s.hoverIndexAt(it.toFloat()) }.toSet()
+        assertEquals((0 until 30).toSet(), reached)
+        assertEquals(0, s.hoverIndexAt(100f))
+        assertEquals(29, s.hoverIndexAt(600f))
+    }
+
+    @Test
+    fun farAwayFromTheListHighlightsNothing() {
+        val s = state(count = 5, rowHeight = 50f, viewport = 250f)
+        assertEquals(-1, s.hoverIndexAt(0f))
+        assertEquals(-1, s.hoverIndexAt(900f))
+    }
 }

@@ -398,6 +398,107 @@ class ScreenshotTest {
         save("keyboard_layout")
     }
 
+    private fun gizmoDrawer(onLaunch: (AppEntry) -> Unit): List<AppEntry> {
+        fun app(label: String) = AppEntry(
+            key = label, label = label, packageName = "x.$label", component = ComponentName("x", label),
+            user = Process.myUserHandle(), subtitle = "", letter = AppRepository.letterOf(label), isWork = false,
+        )
+        val apps = listOf("Alarm", "Books", "Camera", "Drive", "Email", "Files") +
+            (1..16).map { "Gizmo %02d".format(it) } +
+            listOf("Home", "Maps", "Notes", "Phone", "Radio", "Settings", "Tasks", "Weather")
+        val entries = apps.map(::app)
+        val repo = AppRepository(context)
+        compose.setContent {
+            AuraTheme {
+                Box(Modifier.fillMaxSize()) {
+                    AuraBackdrop(drift = 1f)
+                    com.aura.launcher.ui.AppDrawer(
+                        apps = entries, favorites = emptyList(), favoriteKeys = emptySet(), repo = repo,
+                        dock = emptyList(), query = "", onQueryChange = {}, focusSearchToken = 0,
+                        actions = noopDrawer.copy(launch = onLaunch),
+                    )
+                }
+            }
+        }
+        compose.mainClock.advanceTimeBy(500)
+        return entries
+    }
+
+    private fun scrubTo(letterIndex: Int, letterCount: Int, release: androidx.compose.ui.test.TouchInjectionScope.() -> Float) {
+        val node = compose.onNodeWithTag("alphabet")
+        var yLetter = 0f
+        node.performTouchInput {
+            val spacing = minOf(height.toFloat() / letterCount, 30.dp.toPx())
+            yLetter = (height - spacing * letterCount) / 2f + spacing * (letterIndex + 0.5f)
+            down(Offset(width / 2f, yLetter))
+        }
+        compose.mainClock.advanceTimeBy(600)
+        // Slide left into the preview, to the right of the (short) app names.
+        node.performTouchInput { moveTo(Offset(-200.dp.toPx(), yLetter)) }
+        compose.mainClock.advanceTimeBy(600)
+        node.performTouchInput { moveTo(Offset(-200.dp.toPx(), release())) }
+        compose.mainClock.advanceTimeBy(300)
+        node.performTouchInput { up() }
+        compose.mainClock.advanceTimeBy(600)
+    }
+
+    @Test
+    fun scrubReachesTheLastAppInALongLetter() {
+        var launched: AppEntry? = null
+        gizmoDrawer { launched = it }
+        // Letters: A B C D E F G H M N P R S T W → G is index 6 of 15. Release at the bottom.
+        scrubTo(6, 15) { height - 3f }
+        org.junit.Assert.assertEquals("Gizmo 16", launched?.label)
+    }
+
+    @Test
+    fun scrubReachesTheFirstAppAndSavesAScreenshot() {
+        var launched: AppEntry? = null
+        gizmoDrawer { launched = it }
+        val node = compose.onNodeWithTag("alphabet")
+        var yLetter = 0f
+        node.performTouchInput {
+            val spacing = minOf(height.toFloat() / 15, 30.dp.toPx())
+            yLetter = (height - spacing * 15) / 2f + spacing * 6.5f
+            down(Offset(width / 2f, yLetter))
+        }
+        compose.mainClock.advanceTimeBy(600)
+        node.performTouchInput { moveTo(Offset(-200.dp.toPx(), yLetter)) }
+        compose.mainClock.advanceTimeBy(600)
+        // First row sits just under the 56dp "G" header at the top of the list.
+        node.performTouchInput { moveTo(Offset(-200.dp.toPx(), (56 + 20).dp.toPx())) }
+        compose.mainClock.advanceTimeBy(400)
+        save("scrub_long_list")
+        node.performTouchInput { up() }
+        compose.mainClock.advanceTimeBy(600)
+        org.junit.Assert.assertEquals("Gizmo 01", launched?.label)
+    }
+
+    @Test
+    fun drawerWithSuggestions() {
+        val repo = AppRepository(context)
+        compose.setContent {
+            AuraTheme {
+                Box(Modifier.fillMaxSize()) {
+                    AuraBackdrop(drift = 1f)
+                    com.aura.launcher.ui.AppDrawer(
+                        apps = sampleApps, favorites = emptyList(), favoriteKeys = emptySet(), repo = repo,
+                        dock = emptyList(), query = "", onQueryChange = {}, focusSearchToken = 0,
+                        actions = noopDrawer,
+                        suggested = sampleApps.filter { it.label in setOf("Maps", "Spotify", "Gmail", "Messages", "Chrome") },
+                        recent = sampleApps.filter { it.label in setOf("Camera", "Photos", "Weather") },
+                    )
+                }
+            }
+        }
+        compose.mainClock.advanceTimeBy(500)
+        compose.onNodeWithText("Suggested").assertExists()
+        save("drawer_suggested")
+        compose.onNodeWithText("Recent").performClick()
+        compose.mainClock.advanceTimeBy(500)
+        compose.onNodeWithText("Weather").assertExists()
+    }
+
     private fun renderDrawer() {
         val repo = AppRepository(context)
         compose.setContent {

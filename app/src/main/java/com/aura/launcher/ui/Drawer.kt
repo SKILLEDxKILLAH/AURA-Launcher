@@ -124,7 +124,12 @@ fun AppDrawer(
     actions: DrawerActions,
     modifier: Modifier = Modifier,
     topLine: TopLineState = TopLineState.Default,
+    suggested: List<AppEntry> = emptyList(),
+    recent: List<AppEntry> = emptyList(),
 ) {
+    val showSmart = suggested.isNotEmpty() || recent.isNotEmpty()
+    /** The Suggested/Recent row sits above the A–Z list, shifting list indices by one. */
+    val listOffset = if (showSmart) 1 else 0
     val rows = remember(apps) {
         buildList {
             apps.groupBy { it.letter }.forEach { (letter, group) ->
@@ -147,8 +152,8 @@ fun AppDrawer(
     val view = LocalView.current
     var scrubAnim by remember { mutableStateOf<Job?>(null) }
 
-    val listLetter by remember(rows) {
-        derivedStateOf { rows.getOrNull(listState.firstVisibleItemIndex)?.letter }
+    val listLetter by remember(rows, listOffset) {
+        derivedStateOf { rows.getOrNull(listState.firstVisibleItemIndex - listOffset)?.letter }
     }
     val displayLetter = (if (scrub.active) scrub.selected else listLetter) ?: letters.firstOrNull { it != FAVORITES_LETTER } ?: "A"
 
@@ -163,9 +168,14 @@ fun AppDrawer(
 
     fun track(pos: androidx.compose.ui.geometry.Offset) {
         scrub.touch = pos
-        val inPreview = pos.x < geometry.previewEdge(scrub.track)
-        if (inPreview) {
-            scrub.hoveredKey = scrub.rowBounds.entries.firstOrNull { it.value.contains(pos) }?.key
+        // Enter the preview past the edge; leave only when clearly back over the letters.
+        val edge = geometry.previewEdge(scrub.track)
+        scrub.inPreview = if (scrub.inPreview) pos.x < edge + geometry.radius * 0.6f else pos.x < edge
+        if (scrub.inPreview) {
+            val list = previewAppsFor(scrub.selected, apps, favorites)
+            val key = list.getOrNull(scrub.hoverIndexAt(pos.y))?.key
+            if (key != null && key != scrub.hoveredKey) view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+            scrub.hoveredKey = key
             return
         }
         scrub.hoveredKey = null
@@ -175,7 +185,7 @@ fun AppDrawer(
         val letter = letters[idx]
         if (letter != scrub.selected) {
             scrub.selected = letter
-            scrub.rowBounds.clear()
+            scrub.resetPreview()
             view.performHapticFeedback(HapticFeedbackConstants.SEGMENT_FREQUENT_TICK)
         }
     }
@@ -211,6 +221,9 @@ fun AppDrawer(
                                 modifier = Modifier.fillMaxSize().fadeMask(),
                                 contentPadding = PaddingValues(start = 14.dp, end = 4.dp, bottom = 88.dp),
                             ) {
+                                if (showSmart) item(key = "smart_row", contentType = "smart") {
+                                    SmartRow(suggested, recent, repo, actions.launch)
+                                }
                                 items(rows, key = { it.key }, contentType = { it is DrawerRow.Header }) { row ->
                                     when (row) {
                                         is DrawerRow.Header -> SectionHeader(row.letter)
@@ -252,17 +265,17 @@ fun AppDrawer(
                                 } else {
                                     val target = scrub.selected
                                     scope.launch {
-                                        val index = if (target == FAVORITES_LETTER) 0 else headerIndex[target] ?: return@launch
+                                        val index = if (target == FAVORITES_LETTER) 0 else (headerIndex[target] ?: return@launch) + listOffset
                                         listState.scrollToItem(index)
                                     }
                                 }
                                 scrub.active = false
-                                scrub.hoveredKey = null
+                                scrub.resetPreview()
                                 animateScrub(0f)
                             },
                             onCancel = {
                                 scrub.active = false
-                                scrub.hoveredKey = null
+                                scrub.resetPreview()
                                 animateScrub(0f)
                             },
                         )
