@@ -61,7 +61,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         private set
 
     // Overlays
-    var geminiSheetOpen by mutableStateOf(false)
+    private var geminiSheetShown by mutableStateOf(false)
+
+    /**
+     * Whether the Gemini panel is showing. Each time it opens it starts a new chat: whatever was
+     * left from the last time (a finished reply, a request still running, a prompt waiting for
+     * sign-in) is cleared first, so closing the panel ends that conversation.
+     */
+    var geminiSheetOpen: Boolean
+        get() = geminiSheetShown
+        set(open) {
+            if (open && !geminiSheetShown) {
+                clearChat()
+                pendingPrompt = null
+            }
+            geminiSheetShown = open
+        }
     var settingsOpen by mutableStateOf(false)
 
     /** Incremented to ask the Gemini panel to start listening as soon as it opens. */

@@ -14,8 +14,8 @@ android {
         targetSdk = 37
         // versionName is what people see. versionCode only ever goes up so each build installs
         // over the last (pre-release builds already used 1–14).
-        versionCode = 15
-        versionName = "1.0.0"
+        versionCode = 16
+        versionName = "1.0.1"
     }
 
     // One stable signing key for debug and release builds. Google sign-in (OAuth) is registered
