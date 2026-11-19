@@ -25,12 +25,18 @@ object GeminiDiagnostics {
         prefs: AuraPrefs,
         credential: GeminiCredential?,
         tools: PhoneTools,
+        localModel: LocalModel? = null,
         emit: (CheckResult) -> Unit,
     ) {
         emit(CheckResult("Device", null, "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT}) · ${Build.MANUFACTURER} ${Build.MODEL}"))
         val version = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull()
         val gms = GoogleApiAvailability.getInstance().isGooglePlayServicesAvailable(context)
         emit(CheckResult("AURA", null, "v$version · Play services ${if (gms == 0) "OK" else "status $gms"} · model ${prefs.model}"))
+
+        if (prefs.authMode == GeminiAuthMode.ON_DEVICE && localModel != null) {
+            checkOnDevice(localModel, emit)
+            return
+        }
 
         // 1. Sign-in
         val mode = if (prefs.authMode == GeminiAuthMode.API_KEY) "API key" else "Google account"
@@ -145,5 +151,33 @@ object GeminiDiagnostics {
     private fun describe(t: Throwable): String = when (t) {
         is GeminiHttpException -> "${t.message} [HTTP ${t.code}: ${t.raw.take(160)}]"
         else -> t.message ?: t.javaClass.simpleName
+    }
+
+    /** On-device mode: is Nano ready, does it answer, and does AURA understand everyday commands. */
+    private suspend fun checkOnDevice(model: LocalModel, emit: (CheckResult) -> Unit) {
+        val status = model.status()
+        emit(
+            CheckResult(
+                "Gemini Nano", status == NanoStatus.AVAILABLE,
+                when (status) {
+                    NanoStatus.AVAILABLE -> "${model.name()} is ready on this phone"
+                    NanoStatus.DOWNLOADABLE, NanoStatus.DOWNLOADING -> "Not downloaded yet: open Gemini and choose “On this phone”"
+                    else -> "This phone can't run Gemini Nano. Use a free Gemini key instead."
+                },
+            )
+        )
+        if (status != NanoStatus.AVAILABLE) return
+        val t = System.currentTimeMillis()
+        val reply = runCatching { model.reply(emptyList(), "Reply with exactly: AURA OK") {} }
+        reply.onSuccess { emit(CheckResult("Gemini reply", true, "“${it.take(60)}” in ${System.currentTimeMillis() - t} ms (on device)")) }
+            .onFailure { emit(CheckResult("Gemini reply", false, it.message ?: "No answer")) }
+        val parsed = QuickCommands.parse("set a timer for 5 minutes")
+        emit(
+            CheckResult(
+                "Phone actions", parsed?.tool == "set_timer",
+                if (parsed?.tool == "set_timer") "AURA understood “set a timer for 5 minutes”. Nothing was actually done."
+                else "AURA didn't understand a test command",
+            )
+        )
     }
 }

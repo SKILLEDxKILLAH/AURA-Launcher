@@ -130,7 +130,7 @@ class WidgetsTest {
     fun holdingAWidgetOpensItsMenuAndSwipesStillWork() {
         val infos = seed()
         awm.setAllowedToBindAppWidgets(true)
-        val vm = MainViewModel(context)
+        val vm = MainViewModel(context).also { it.prefs.markWelcomeDone() }
         val id = vm.widgets.allocateId()
         assertTrue(vm.widgets.bindIfAllowed(id, infos[0]))
         vm.widgets.add(id, 180)
@@ -163,7 +163,7 @@ class WidgetsTest {
 
     @Test
     fun homeMenuOffersWidgets() {
-        val vm = MainViewModel(context)
+        val vm = MainViewModel(context).also { it.prefs.markWelcomeDone() }
         compose.setContent { AuraTheme { com.aura.launcher.ui.AuraRoot(vm) {} } }
         compose.onRoot().performTouchInput {
             down(Offset(width * 0.5f, height * 0.55f))

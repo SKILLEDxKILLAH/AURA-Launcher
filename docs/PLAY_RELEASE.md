@@ -74,7 +74,7 @@ Store builds should send reports from inside the app, so you need somewhere to r
 
 Also answer **"Yes, the app generates content using AI"** in the content rating questionnaire.
 
-### 7. Gemini sign-in for the public: decide before launch
+### 7. Gemini sign-in for the public
 - **Who pays:** when people sign in with Google through your OAuth client, Gemini requests normally count against **your** Google Cloud project's quota and billing, not theirs. For a public app, that's every user's usage on your bill.
 - **Verification:** before anyone outside your test-user list can sign in, Google reviews the app's sign-in. That needs:
   - the privacy policy
@@ -85,6 +85,8 @@ Also answer **"Yes, the app generates content using AI"** in the content rating 
 
   The Gemini-only scope keeps that review smaller.
 - **Alternative:** publish with **API key** as the main option. Each person uses their own free key from AI Studio, so there's no verification and no cost to you. Google sign-in stays available for your own builds.
+- **As of 1.2.0, AURA does this by default.** First-time setup offers **On this phone** (Gemini Nano: no account, nothing leaves the phone) and a guided **free key** before **Continue with Google**. You can launch publicly without OAuth verification. People who tap **Continue with Google** just see "Access blocked" unless you've added them as test users.
+- **Gemini Nano comes through Google's ML Kit library.** When filling in Data safety, check Google's ML Kit data disclosure for anything the library itself sends (for example, diagnostics). AURA sends nothing in on-device mode.
 
 ### 8. Other things reviewers look at
 - **News feed content:** the feed shows headlines, short summaries and pictures from publishers' public RSS feeds, with the source named and the full article opened on the publisher's site. Some publishers' feed terms limit commercial use. If you monetize AURA, check those terms or switch the feed to Google News only.

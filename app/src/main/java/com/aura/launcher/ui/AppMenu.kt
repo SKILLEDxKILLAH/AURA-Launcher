@@ -34,6 +34,8 @@ data class AppMenuActions(
     val uninstall: (AppEntry) -> Unit = {},
     val isFavorite: (AppEntry) -> Boolean = { false },
     val isHidden: (AppEntry) -> Boolean = { false },
+    val toggleDock: ((AppEntry) -> Unit)? = null,
+    val isInDock: (AppEntry) -> Boolean = { false },
     /** Where shortcuts come from; null means the app's real shortcuts from Android. */
     val loadShortcuts: (suspend (AppEntry) -> List<AppShortcut>)? = null,
 )
@@ -80,6 +82,9 @@ fun AppMenu(
         val favorite = actions.isFavorite(entry)
         val hidden = actions.isHidden(entry)
         MenuItem(if (favorite) "Remove from favorites" else "Add to favorites") { onDismiss(); actions.toggleFavorite(entry) }
+        actions.toggleDock?.let { toggle ->
+            MenuItem(if (actions.isInDock(entry)) "Remove from dock" else "Add to dock") { onDismiss(); toggle(entry) }
+        }
         MenuItem(if (hidden) "Show in app drawer" else "Hide from app drawer") { onDismiss(); actions.toggleHidden(entry) }
         MenuItem("App info") { onDismiss(); actions.appInfo(entry) }
         MenuItem("Uninstall") { onDismiss(); actions.uninstall(entry) }

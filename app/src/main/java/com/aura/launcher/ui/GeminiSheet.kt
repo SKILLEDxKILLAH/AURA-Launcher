@@ -89,6 +89,9 @@ data class GeminiSheetState(
     val modelsLoading: Boolean = false,
     val modelsError: String? = null,
     val thinking: com.aura.launcher.data.ThinkingLevel = com.aura.launcher.data.ThinkingLevel.AUTO,
+    val setup: GeminiSetupState = GeminiSetupState(),
+    /** Gemini Nano on the phone: no model or thinking choices, and its name instead. */
+    val onDeviceName: String? = null,
 )
 
 @Composable
@@ -104,6 +107,8 @@ fun GeminiSheet(
     onRunCheck: () -> Unit = {},
     onSelectThinking: (com.aura.launcher.data.ThinkingLevel) -> Unit = {},
     onReport: (ChatItem, com.aura.launcher.gemini.ReportReason) -> Unit = { _, _ -> },
+    setupActions: GeminiSetupActions = GeminiSetupActions(signIn = onSignIn, openSettings = onOpenSettings),
+    onChangeSetup: () -> Unit = {},
 ) {
     var panelOpen by rememberSaveable { mutableStateOf(false) }
     var reporting by remember { mutableStateOf<ChatItem?>(null) }
@@ -166,11 +171,13 @@ fun GeminiSheet(
             Spacer(Modifier.height(12.dp))
 
             if (state.needsSignIn) {
-                SignInCard(state.signingIn, state.signInError, onSignIn, onOpenSettings)
+                GeminiSetupCard(state.setup, setupActions)
                 return@Column
             }
 
-            ModelBar(state, expanded = panelOpen) {
+            if (state.onDeviceName != null) {
+                OnDeviceBar(state.onDeviceName, onChangeSetup)
+            } else ModelBar(state, expanded = panelOpen) {
                 panelOpen = !panelOpen
                 if (panelOpen) { voice.stop(); onLoadModels() }
             }
@@ -274,46 +281,9 @@ fun GeminiSheet(
     }
 }
 
-@Composable
-private fun SignInCard(signingIn: Boolean, error: String?, onSignIn: () -> Unit, onOpenSettings: () -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp)) {
-        Text("Use Gemini right here", color = Aura.Ink, fontSize = 22.sp, fontFamily = Aura.Sans)
-        Spacer(Modifier.height(6.dp))
-        Text(
-            "Sign in with your Google account and allow AURA to use Gemini. You only do this once — " +
-                "after that Gemini answers and acts on your phone straight from the launcher.",
-            color = Aura.InkDim, fontSize = 14.sp, fontFamily = Aura.Sans,
-        )
-        Spacer(Modifier.height(18.dp))
-        Row(
-            Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(28.dp)).background(Color.White)
-                .border(1.dp, Aura.Stroke, RoundedCornerShape(28.dp))
-                .clickable(enabled = !signingIn, onClick = onSignIn),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
-        ) {
-            if (signingIn) {
-                CircularProgressIndicator(Modifier.size(20.dp), color = Color(0xFF1F1F1F), strokeWidth = 2.dp)
-                Spacer(Modifier.width(12.dp))
-                Text("Waiting for Google…", color = Color(0xFF1F1F1F), fontSize = 16.sp, fontFamily = Aura.Sans, fontWeight = FontWeight.Medium)
-            } else {
-                GoogleG(Modifier.size(22.dp))
-                Spacer(Modifier.width(12.dp))
-                Text("Continue with Google", color = Color(0xFF1F1F1F), fontSize = 16.sp, fontFamily = Aura.Sans, fontWeight = FontWeight.Medium)
-            }
-        }
-        if (error != null) {
-            Spacer(Modifier.height(12.dp))
-            Text(error, color = Aura.Error, fontSize = 13.sp, fontFamily = Aura.Sans)
-            SmallTextButton("Open AURA settings", onOpenSettings)
-        }
-        Spacer(Modifier.height(8.dp))
-    }
-}
-
 /** Four-color "G" mark drawn with arcs, used on the sign-in button. */
 @Composable
-private fun GoogleG(modifier: Modifier) {
+internal fun GoogleG(modifier: Modifier) {
     androidx.compose.foundation.Canvas(modifier) {
         val stroke = size.minDimension * 0.2f
         val inset = stroke / 2
@@ -431,4 +401,25 @@ private fun ReportDialog(onPick: (com.aura.launcher.gemini.ReportReason) -> Unit
             )
         },
     )
+}
+
+/** Shown instead of the model picker when Gemini runs on the phone. */
+@Composable
+private fun OnDeviceBar(name: String, onChange: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).glass(RoundedCornerShape(18.dp))
+            .padding(start = 16.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AuraGlyph(Glyph.Sparkle, size = 18.dp)
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(name, color = Aura.Ink, fontSize = 15.sp, fontFamily = Aura.Sans, maxLines = 1)
+            Text("On this phone · private", color = Aura.InkDim, fontSize = 12.sp, fontFamily = Aura.Sans)
+        }
+        Text(
+            "Change", color = Aura.Accent, fontSize = 14.sp, fontFamily = Aura.Sans,
+            modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onChange).padding(10.dp),
+        )
+    }
 }

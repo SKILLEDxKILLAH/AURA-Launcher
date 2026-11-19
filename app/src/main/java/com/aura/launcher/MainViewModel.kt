@@ -84,7 +84,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (open && !geminiSheetShown) {
                 clearChat()
                 pendingPrompt = null
+                if (!prefs.geminiReady) checkNano()
             }
+            // Closing the panel mid-choice keeps whatever was set up before.
+            if (!open) geminiSetupOpen = false
             geminiSheetShown = open
         }
     var settingsOpen by mutableStateOf(false)
@@ -113,7 +116,49 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         dock = DockResolver.resolve(app)
+        // Your own dock apps come from the app list, so rebuild it when apps change.
+        viewModelScope.launch { apps.collect { refreshDock() } }
     }
+
+    /** The dock: apps you chose, or your default Phone, Messages, Browser, Photos and Camera. */
+    fun refreshDock() {
+        val keys = prefs.dockKeys
+        dock = if (keys.isEmpty()) DockResolver.resolve(context) else {
+            val byKey = apps.value.associateBy { it.key }
+            keys.mapNotNull { byKey[it] }.map { e ->
+                DockItem(
+                    e.label, e.packageName,
+                    Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setComponent(e.component).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    entryKey = e.key,
+                )
+            }
+        }
+    }
+
+    /** Adds [entry] to the dock or takes it off. The first change starts from the default dock. */
+    fun toggleDock(entry: AppEntry) {
+        val current = prefs.dockKeys.ifEmpty {
+            dock.mapNotNull { item -> item.entryKey ?: apps.value.firstOrNull { it.packageName == item.packageName && !it.isWork }?.key }
+        }
+        val next = when {
+            entry.key in current -> current - entry.key
+            current.size >= com.aura.launcher.data.AuraPrefs.MAX_DOCK -> {
+                android.widget.Toast.makeText(context, "The dock holds 5 apps. Remove one first.", android.widget.Toast.LENGTH_SHORT).show()
+                return
+            }
+            else -> current + entry.key
+        }
+        prefs.updateDockKeys(next)
+        refreshDock()
+    }
+
+    fun resetDock() {
+        prefs.updateDockKeys(emptyList())
+        refreshDock()
+    }
+
+    fun isInDock(entry: AppEntry): Boolean =
+        dock.any { it.entryKey == entry.key || (it.entryKey == null && it.packageName == entry.packageName && !entry.isWork) }
 
     fun launch(entry: AppEntry) {
         repo.launch(entry)
@@ -127,7 +172,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun launchDock(item: DockItem) {
-        if (ActivityBridge.start(context, item.intent)) repo.recordPackage(item.packageName)
+        val entry = item.entryKey?.let { key -> apps.value.firstOrNull { it.key == key } }
+        if (entry != null) launch(entry)
+        else if (ActivityBridge.start(context, item.intent)) repo.recordPackage(item.packageName)
     }
 
     // ---- Suggested / Recent ---------------------------------------------------------------------
@@ -177,11 +224,29 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Whether AURA is the phone's home app (the Home button opens it). */
+    var isDefaultHome by mutableStateOf(checkDefaultHome())
+        private set
+
+    private fun checkDefaultHome(): Boolean = runCatching {
+        context.getSystemService(android.app.role.RoleManager::class.java).isRoleHeld(android.app.role.RoleManager.ROLE_HOME)
+    }.getOrDefault(false)
+
+    /** Android's "Set as default home app" prompt (or Home settings if the prompt isn't offered). */
+    fun requestDefaultHome() {
+        val rm = context.getSystemService(android.app.role.RoleManager::class.java)
+        val intent = if (rm.isRoleAvailable(android.app.role.RoleManager.ROLE_HOME) && !rm.isRoleHeld(android.app.role.RoleManager.ROLE_HOME)) {
+            rm.createRequestRoleIntent(android.app.role.RoleManager.ROLE_HOME)
+        } else Intent(Settings.ACTION_HOME_SETTINGS)
+        ActivityBridge.start(context, intent)
+    }
+
     fun onResumed() {
+        isDefaultHome = checkDefaultHome()
         checkWallpaperChanged()
         widgets.pruneMissing()
         refreshSuggestions()
-        dock = DockResolver.resolve(context)
+        refreshDock()
         weatherNeedsPermission = !WeatherService.hasPermission(context)
         val now = System.currentTimeMillis()
         if ((prefs.showWeather || prefs.topLineMode == TopLineMode.WEATHER) && now - lastWeatherAt > 20 * 60_000) refreshWeather()
@@ -329,22 +394,123 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { googleAuth.signOut(email) }
     }
 
+    // ---- Easier setup: on-device Gemini Nano and a guided free API key -------------------------
+
+    /** Gemini Nano on the phone. Replaceable in tests. */
+    internal var localModel: com.aura.launcher.gemini.LocalModel = com.aura.launcher.gemini.MlKitNano()
+    var nanoStatus by mutableStateOf(com.aura.launcher.gemini.NanoStatus.CHECKING)
+        private set
+    var nanoName by mutableStateOf("Gemini Nano")
+        private set
+    var nanoWorking by mutableStateOf(false)
+        private set
+    var nanoError by mutableStateOf<String?>(null)
+        private set
+    var keyChecking by mutableStateOf(false)
+        private set
+    var keyError by mutableStateOf<String?>(null)
+        private set
+    /** True while the person is choosing (or re-choosing) how Gemini runs. */
+    var geminiSetupOpen by mutableStateOf(false)
+
+    /** Finds out whether this phone can run Gemini Nano. Cheap; safe to call often. */
+    fun checkNano() {
+        viewModelScope.launch {
+            nanoStatus = localModel.status()
+            if (nanoStatus == com.aura.launcher.gemini.NanoStatus.AVAILABLE) nanoName = localModel.name()
+        }
+    }
+
+    /** Switches Gemini to run on the phone, downloading the model first if the phone needs it. */
+    fun useOnDevice() {
+        if (nanoWorking) return
+        nanoWorking = true
+        nanoError = null
+        viewModelScope.launch {
+            try {
+                if (localModel.status() != com.aura.launcher.gemini.NanoStatus.AVAILABLE) localModel.download {}
+                nanoStatus = localModel.status()
+                if (nanoStatus != com.aura.launcher.gemini.NanoStatus.AVAILABLE) {
+                    nanoError = "Gemini Nano is still downloading. Keep AURA open on Wi-Fi and try again in a few minutes."
+                    return@launch
+                }
+                nanoName = localModel.name()
+                prefs.updateAuthMode(GeminiAuthMode.ON_DEVICE)
+                geminiSetupOpen = false
+                pendingPrompt?.let { pendingPrompt = null; ask(it) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                nanoError = e.message ?: "Couldn't set up Gemini Nano"
+            } finally {
+                nanoWorking = false
+            }
+        }
+    }
+
+    /** Opens Google AI Studio's key page, where a free key takes one tap (no Cloud console). */
+    fun openKeyPage() {
+        keyError = null
+        ActivityBridge.start(context, Intent(Intent.ACTION_VIEW, android.net.Uri.parse(AI_STUDIO_KEYS)))
+    }
+
+    /** Checks [key] with Google (lists models) and, if it works, uses it. */
+    fun useApiKey(key: String) {
+        val k = key.trim()
+        if (keyChecking) return
+        if (!looksLikeApiKey(k)) {
+            keyError = if (k.isEmpty()) "Copy your key in AI Studio first, then tap Paste." else "That doesn't look like a Gemini API key (they start with “AIza”)."
+            return
+        }
+        keyChecking = true
+        keyError = null
+        viewModelScope.launch {
+            try {
+                val found = GeminiApi.listModels(GeminiCredential.ApiKey(k))
+                prefs.updateApiKey(k)
+                prefs.updateAuthMode(GeminiAuthMode.API_KEY)
+                if (found.isNotEmpty()) models = found
+                geminiSetupOpen = false
+                pendingPrompt?.let { pendingPrompt = null; ask(it) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: com.aura.launcher.gemini.GeminiHttpException) {
+                keyError = if (e.code == 400 || e.code == 403) "Google didn't accept that key. Copy it again from AI Studio." else e.message
+            } catch (e: Exception) {
+                keyError = "Couldn't check the key: ${e.message ?: "no connection"}"
+            } finally {
+                keyChecking = false
+            }
+        }
+    }
+
+    /** Reads the key from the clipboard (only when the person taps Paste). */
+    fun pasteApiKey() {
+        val clip = context.getSystemService(android.content.ClipboardManager::class.java)?.primaryClip
+        val text = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty()
+        useApiKey(Regex("AIza[0-9A-Za-z_\\-]{30,}").find(text)?.value ?: text)
+    }
+
     private fun credential(): GeminiCredential? = when (prefs.authMode) {
         GeminiAuthMode.GOOGLE_ACCOUNT -> if (prefs.accountEmail != null) {
             GeminiCredential.GoogleAccount(widenScopes = { googleAuth.widenScopes() }) { force -> googleAuth.accessToken(force) }
         } else null
         GeminiAuthMode.API_KEY -> prefs.apiKey.takeIf { it.isNotBlank() }?.let { GeminiCredential.ApiKey(it) }
+        GeminiAuthMode.ON_DEVICE -> null
     }
 
     fun ask(prompt: String) {
         val text = prompt.trim()
         if (text.isEmpty()) return
         geminiSheetOpen = true
+        if (prefs.authMode == GeminiAuthMode.ON_DEVICE && !geminiSetupOpen) {
+            askOnDevice(text)
+            return
+        }
         val credential = credential()
-        if (credential == null) {
-            // Not signed in yet: keep the prompt and send it right after sign-in.
+        if (credential == null || geminiSetupOpen) {
+            // Not set up yet: keep the prompt and send it once a way to use Gemini is chosen.
             pendingPrompt = text
-            if (prefs.authMode == GeminiAuthMode.GOOGLE_ACCOUNT) signIn()
             return
         }
         chat += ChatItem(ChatRole.USER, text)
@@ -390,6 +556,43 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 chat += ChatItem(ChatRole.ERROR, e.message ?: "Something went wrong")
             } finally {
                 // Stopped or failed part-way: keep what was written, but as finished lines.
+                for (i in chat.indices) if (chat[i].streaming) chat[i] = chat[i].copy(streaming = false)
+                agentBusy = false
+            }
+        }
+    }
+
+    /**
+     * On-device mode: common phone actions are recognized by AURA itself (Nano can't operate the
+     * phone on most devices yet); everything else is answered by Gemini Nano, streamed.
+     */
+    private fun askOnDevice(text: String) {
+        val history = chat.filter { it.role == ChatRole.USER || it.role == ChatRole.GEMINI }.map { (it.role == ChatRole.USER) to it.text }
+        chat += ChatItem(ChatRole.USER, text)
+        agentJob?.cancel()
+        agentJob = viewModelScope.launch {
+            agentBusy = true
+            var live = -1
+            try {
+                val command = com.aura.launcher.gemini.QuickCommands.parse(text, isApp = { repo.findApps(it, 1).isNotEmpty() })
+                if (command != null) {
+                    val result = tools.execute(command.tool, command.args)
+                    chat += ChatItem(ChatRole.ACTION, result.label, result.ok)
+                    if (command.tool == "get_device_status" && result.ok) chat += ChatItem(ChatRole.GEMINI, result.detail)
+                    return@launch
+                }
+                val answer = localModel.reply(history, text) { partial ->
+                    if (partial.isEmpty()) return@reply
+                    val item = ChatItem(ChatRole.GEMINI, partial, streaming = true)
+                    if (live in chat.indices) chat[live] = item else { chat += item; live = chat.lastIndex }
+                }
+                val done = ChatItem(ChatRole.GEMINI, answer)
+                if (live in chat.indices) chat[live] = done else chat += done
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                chat += ChatItem(ChatRole.ERROR, e.message ?: "Gemini Nano couldn't answer")
+            } finally {
                 for (i in chat.indices) if (chat[i].streaming) chat[i] = chat[i].copy(streaming = false)
                 agentBusy = false
             }
@@ -497,7 +700,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         diagnosticsRunning = true
         viewModelScope.launch {
             try {
-                GeminiDiagnostics.run(context, prefs, credential(), tools) { diagnostics += it }
+                GeminiDiagnostics.run(context, prefs, credential(), tools, localModel) { diagnostics += it }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -525,5 +728,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         agentJob?.cancel()
         agent.reset()
         chat.clear()
+    }
+
+    companion object {
+        const val AI_STUDIO_KEYS = "https://aistudio.google.com/apikey"
+
+        /** Gemini API keys from AI Studio look like "AIza" followed by 35 characters. */
+        fun looksLikeApiKey(k: String) = Regex("^AIza[0-9A-Za-z_\\-]{30,}$").matches(k)
     }
 }

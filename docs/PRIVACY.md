@@ -10,14 +10,17 @@ AURA Launcher ("AURA") is a home-screen app for Android. This policy explains wh
 These never leave your device:
 - **Your apps and how you use them.** AURA reads your installed apps to show them in the app drawer. It keeps its own record of when you open apps, and with your permission (Usage access) reads Android's usage history, to suggest apps. This list and history are never sent anywhere, including to Gemini.
 - **Settings, favorites, hidden apps, widgets and themes.**
-- **Contacts.** When you ask Gemini to call or text someone, AURA looks the name up in your contacts on the phone. Your contact list is not sent anywhere.
+- **Contacts.** When you ask Gemini to call or text someone, or search for a person in the app drawer, AURA looks the name up in your contacts on the phone. Your contact list is not sent anywhere.
+- **Clipboard.** AURA reads the clipboard only when you tap **Paste my key**, to fill in your Gemini key.
 - **Voice.** Talking to Gemini uses Android's built-in speech recognition, which works on the device when it can. AURA receives only the resulting text.
 - **Accessibility service ("AURA gestures"), if you turn it on.** It only opens the notification shade or Quick Settings when you swipe down on AURA's home screen. It cannot read the screen and collects nothing.
 
 ## What is sent, and to whom
 | When | What is sent | To |
 |---|---|---|
-| You use Gemini | Your message, earlier messages in the same chat, and results of phone actions Gemini asked for (for example "battery 80%") | Google's Gemini API, using your Google account or your own API key |
+| You use Gemini **on this phone** (Gemini Nano) | Nothing. Questions are answered on the device, and AURA carries out commands itself | Nobody |
+| You use Gemini with a **free key** or **Google sign-in** | Your message, earlier messages in the same chat, and results of phone actions Gemini asked for (for example "battery 80%") | Google's Gemini API, using your own key or your Google account |
+| You set up a free key | The key, to check it works | Google's Gemini API |
 | You sign in with Google | A sign-in request; Google returns your email address, which AURA shows in the app | Google |
 | Weather is on | Your approximate location, rounded to about 1 km | Open-Meteo (open-meteo.com) |
 | You open the news feed | Requests for public news feeds and their pictures | BBC, The New York Times, The Guardian, Ars Technica, The Verge, or Google News |

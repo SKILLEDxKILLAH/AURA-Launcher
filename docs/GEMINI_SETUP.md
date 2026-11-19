@@ -2,21 +2,49 @@
 
 AURA runs Google Gemini **inside the launcher**. You type or talk, and Gemini answers and can act on your phone: flashlight, alarms, timers, calls, messages, navigation, apps, settings, media and calendar. It never opens the separate Gemini app.
 
-AURA connects to Gemini in one of two ways:
+The first time you open Gemini, AURA asks how you'd like it to run. **None of the options needs Google Cloud.**
 
-| | **Google account** (recommended) | **API key** |
-|---|---|---|
-| Sign-in on the phone | Tap **Continue with Google** once | Paste a key into Settings |
-| One-time setup | Google Cloud project (about 10 minutes, below) | Get a key from AI Studio (about 2 minutes) |
-| Best for | Using AURA with your Google account | The quickest start, or testing |
+| | **On this phone** | **Free Gemini key** | **Continue with Google** |
+|---|---|---|---|
+| Setup | One tap | About a minute in AI Studio | Developer's Google Cloud setup (Option 3) |
+| Account or key | None | Your own free key | Your Google account |
+| Where Gemini runs | On the phone (Gemini Nano) | Google's servers | Google's servers |
+| Answers | Shorter | Full Gemini | Full Gemini |
+| Phone actions | Everyday ones, handled by AURA | Everything Gemini can do | Everything Gemini can do |
+| Available | Phones that support Gemini Nano | Everyone | Accounts the developer added |
 
-Both connect to the same Gemini models. **Usage counts against your Google Cloud project's Gemini API quota**, which includes a free tier. It does **not** use a consumer Gemini Advanced / Google One AI subscription, because Google doesn't let third-party apps use those.
+Change it any time in **Settings → Gemini → How Gemini runs**.
+
+None of these use a Gemini Advanced / Google One AI subscription. Google doesn't let other apps use those.
 
 ---
 
-## Option A: Sign in with your Google account
+## Option 1: On this phone (Gemini Nano)
+If your phone supports Gemini Nano (recent Pixels and some other flagships), the first option is **On this phone**:
+1. Tap **Use Gemini on this phone**, or **Download and use** if the model isn't on the phone yet. Wi-Fi is best for the download.
+2. That's it. Nothing you ask leaves the phone, and no account or key is involved.
 
-You do this once, in the Google Cloud console on any computer. After that, signing in on the phone is one tap.
+How it works:
+- **Everyday commands** are understood by AURA itself and done right away. For example: "flashlight on", "set a timer for 10 minutes", "wake me up at 6:30", "open Spotify", "call Mom", "text Sam saying I'm late", "navigate home", "play jazz", "turn on Bluetooth" and "how much battery do I have".
+- **Questions** are answered by Gemini Nano. Answers are shorter than cloud Gemini, and it can't look things up on the web.
+- If your phone doesn't support Gemini Nano, this option isn't shown.
+
+## Option 2: Free Gemini key (recommended for most people)
+Google AI Studio gives anyone a free Gemini key. It creates everything it needs behind the scenes, so you never open the Google Cloud console and don't need a card.
+1. In AURA's Gemini panel, tap **Open Google AI Studio** (or go to https://aistudio.google.com/apikey).
+2. Sign in with your Google account and accept the terms if asked.
+3. Tap **Create API key**, then **Copy**.
+4. Go back to AURA and tap **Paste my key**.
+
+AURA checks the key with Google straight away, and you're done. The key stays on your phone and is left out of cloud backups.
+
+The free tier has daily limits that Google sets per model. If you hit one, pick **Fastest** in the model panel or wait a bit.
+
+---
+
+## Option 3: Continue with Google (for the developer and testers)
+
+This one does need Google Cloud, but only **once, by whoever publishes AURA**. People using a copy signed with the same key then just tap **Continue with Google**. While the project is in Testing, only accounts listed under **Test users** can sign in; everyone else sees "Access blocked".
 
 ### 1. Create a project and turn on the Gemini API
 1. Open **https://console.cloud.google.com** and sign in with the Google account you'll use in AURA.
@@ -59,14 +87,6 @@ You can sign out at any time in **Settings → Gemini → Sign out**. That revok
 
 ---
 
-## Option B: Use an API key instead
-1. Open **https://aistudio.google.com/apikey**, sign in, and click **Create API key**.
-2. In AURA, open **Settings → Gemini → Advanced**, turn on **Use an API key instead**, and paste the key.
-
-The key stays on your phone and is only ever sent to Google's Gemini API.
-
----
-
 ## Choosing a model and thinking level
 In the Gemini panel, tap **Change** on the bar under your email:
 - **Best / Balanced / Fastest**: Gemini Pro Latest, Flash Latest and Flash-Lite Latest. These always point at Google's current versions.
@@ -84,6 +104,8 @@ Open the model panel and tap **Run Gemini check**, or go to **Settings → Gemin
 5. The thinking level actually used.
 6. Whether Gemini correctly chooses a phone action. Nothing is actually done on your phone.
 7. Permissions.
+
+With **On this phone**, the check instead confirms Gemini Nano is ready, gets a real on-device reply, and tests that AURA understands a sample command.
 
 Tap **Copy report** to share the results. The report contains no passwords, tokens or keys.
 
@@ -110,7 +132,7 @@ The account you chose isn't a test user. Add that exact Gmail under **Google Aut
 Google doesn't recognize this copy of AURA. The Android client's **package name** (`com.aura.launcher`) or **SHA-1** doesn't match. Copy the SHA-1 from AURA's **Settings → Google setup** and add it as an Android client.
 
 **"The Gemini API isn't enabled in your Google Cloud project yet"**
-Enable **Generative Language API** in that project (step 1.3).
+Enable **Generative Language API** in that project (Option 3, step 1.3). With a free key from AI Studio this is already done for you.
 
 **"Gemini is busy or your quota is used up"**
 You've hit the project's rate or free-tier limit. Wait a moment, choose a lighter model (Fastest), or enable billing on the project.

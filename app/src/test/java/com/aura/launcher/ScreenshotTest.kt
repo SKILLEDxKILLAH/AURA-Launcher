@@ -108,7 +108,7 @@ class ScreenshotTest {
 
     @Test
     fun swipeFromRightOpensDrawer() {
-        val vm = MainViewModel(context)
+        val vm = MainViewModel(context).also { it.prefs.markWelcomeDone() }
         compose.setContent { AuraTheme { com.aura.launcher.ui.AuraRoot(vm) {} } }
         compose.onRoot().performTouchInput {
             down(Offset(width - 12f, height * 0.5f))
@@ -168,7 +168,7 @@ class ScreenshotTest {
 
     @Test
     fun pressAndHoldMenu() {
-        val vm = MainViewModel(context)
+        val vm = MainViewModel(context).also { it.prefs.markWelcomeDone() }
         compose.setContent { AuraTheme { com.aura.launcher.ui.AuraRoot(vm) {} } }
         compose.onRoot().performTouchInput {
             down(Offset(width * 0.5f, height * 0.55f))
@@ -201,7 +201,7 @@ class ScreenshotTest {
 
     @Test
     fun editTopLabel() {
-        val vm = MainViewModel(context)
+        val vm = MainViewModel(context).also { it.prefs.markWelcomeDone() }
         vm.prefs.updateTopLabel("")
         vm.prefs.updateTopLineMode(com.aura.launcher.data.TopLineMode.LABEL)
         compose.setContent { AuraTheme { com.aura.launcher.ui.AuraRoot(vm) {} } }
@@ -304,7 +304,7 @@ class ScreenshotTest {
 
     @Test
     fun swipeRightOpensFeedAndLeftStillOpensDrawer() {
-        val vm = MainViewModel(context)
+        val vm = MainViewModel(context).also { it.prefs.markWelcomeDone() }
         compose.setContent { AuraTheme { com.aura.launcher.ui.AuraRoot(vm) {} } }
         compose.onRoot().performTouchInput {
             down(Offset(40f, height * 0.5f))
@@ -523,7 +523,7 @@ class ScreenshotTest {
 
     @Test
     fun geminiCanBeRemovedFromTheDrawerInSettings() {
-        val vm = MainViewModel(context)
+        val vm = MainViewModel(context).also { it.prefs.markWelcomeDone() }
         vm.prefs.updateDrawerGeminiBar(true)
         vm.prefs.updateDrawerGeminiButton(true)
         compose.setContent { AuraTheme { com.aura.launcher.ui.AuraRoot(vm) {} } }

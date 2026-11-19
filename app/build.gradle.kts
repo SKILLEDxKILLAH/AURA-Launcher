@@ -14,8 +14,8 @@ android {
         targetSdk = 37
         // versionName is what people see. versionCode only ever goes up so each build installs
         // over the last (pre-release builds already used 1–14).
-        versionCode = 17
-        versionName = "1.1.0"
+        versionCode = 18
+        versionName = "1.2.0"
 
         // Where "Report this reply" sends reports (an HTTPS endpoint that accepts a JSON POST).
         // Set auraReportUrl in gradle.properties or with -PauraReportUrl=… for store builds.
@@ -77,6 +77,9 @@ dependencies {
 
     // Google sign-in + OAuth authorization (Gemini API access with the user's Google account)
     implementation("com.google.android.gms:play-services-auth:22.0.0")
+
+    // Gemini Nano on the phone (no account, no key) through Android AICore, where supported.
+    implementation("com.google.mlkit:genai-prompt:1.0.0-beta5")
 
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")

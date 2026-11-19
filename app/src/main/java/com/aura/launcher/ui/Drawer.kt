@@ -617,10 +617,28 @@ private fun SearchResults(
 ) {
     val apps = remember(query) { repo.findApps(query, 8) }
     val settings = remember(query) { SettingShortcuts.search(query) }
+    val sum = remember(query) { com.aura.launcher.data.Calculator.evaluate(query) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val contacts by androidx.compose.runtime.produceState(emptyList<com.aura.launcher.data.ContactHit>(), query) {
+        kotlinx.coroutines.delay(120) // wait for typing to pause
+        value = com.aura.launcher.data.ContactSearch.find(context, query)
+    }
     LazyColumn(
-        Modifier.fillMaxSize(),
+        Modifier.fillMaxSize().testTag("search_results"),
         contentPadding = PaddingValues(start = 14.dp, end = 18.dp, bottom = 88.dp),
     ) {
+        // Typed a sum? The answer comes first; tap to copy it.
+        if (sum != null) item(key = "calc") {
+            ResultRow(
+                leading = { Box(Modifier.size(58.dp).glass(CircleShape), contentAlignment = Alignment.Center) { Text("=", color = Aura.Ink, fontSize = 26.sp) } },
+                title = sum,
+                subtitle = "$query · tap to copy",
+                onClick = {
+                    context.getSystemService(android.content.ClipboardManager::class.java)
+                        ?.setPrimaryClip(android.content.ClipData.newPlainText("Result", sum.replace(",", "")))
+                },
+            )
+        }
         item(key = "ask") {
             ResultRow(
                 leading = { Box(Modifier.size(58.dp).glass(CircleShape, fill = Aura.GlassDark), contentAlignment = Alignment.Center) { AuraGlyph(Glyph.Sparkle, size = 30.dp) } },
@@ -632,6 +650,8 @@ private fun SearchResults(
         if (apps.isNotEmpty()) item(key = "apps_label") { SectionHeader("Apps") }
         // Hidden apps still turn up here, so they're never lost.
         items(apps, key = { it.key }) { AppRow(it, repo, menu, actions.launch, note = if (menu.isHidden(it)) "Hidden from app drawer" else null) }
+        if (contacts.isNotEmpty()) item(key = "contacts_label") { SectionHeader("Contacts") }
+        items(contacts, key = { "c_" + it.lookupUri }) { c -> ContactRow(c) }
         if (settings.isNotEmpty()) item(key = "settings_label") { SectionHeader("Settings") }
         items(settings, key = { "s_" + it.id }) { s ->
             ResultRow(
@@ -663,6 +683,39 @@ private fun ResultRow(leading: @Composable () -> Unit, title: String, subtitle: 
         Column {
             Text(title, color = Aura.Ink, fontSize = 19.sp, fontFamily = Aura.Sans)
             Text(subtitle, color = Aura.InkDim, fontSize = 14.sp, fontFamily = Aura.Sans, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/** A contact in search: tap for their card, or call / text right away. */
+@Composable
+private fun ContactRow(c: com.aura.launcher.data.ContactHit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp))
+            .clickable { com.aura.launcher.ActivityBridge.start(context, com.aura.launcher.data.ContactSearch.openIntent(c)) }
+            .padding(horizontal = 6.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(58.dp).glass(CircleShape, fill = Aura.GlassStrong), contentAlignment = Alignment.Center) {
+            Text(c.name.take(1).uppercase(), color = Aura.Ink, fontSize = 22.sp, fontFamily = Aura.Sans)
+        }
+        Spacer(Modifier.width(20.dp))
+        Column(Modifier.weight(1f)) {
+            Text(c.name, color = Aura.Ink, fontSize = 19.sp, fontFamily = Aura.Sans, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            c.number?.let { Text(it, color = Aura.InkDim, fontSize = 14.sp, fontFamily = Aura.Sans, maxLines = 1) }
+        }
+        c.number?.let { n ->
+            Box(
+                Modifier.size(44.dp).clip(CircleShape)
+                    .clickable(onClickLabel = "Call ${c.name}") { com.aura.launcher.ActivityBridge.start(context, com.aura.launcher.data.ContactSearch.dialIntent(n)) },
+                contentAlignment = Alignment.Center,
+            ) { AuraGlyph(Glyph.Phone, size = 20.dp, color = Aura.Ink) }
+            Box(
+                Modifier.size(44.dp).clip(CircleShape)
+                    .clickable(onClickLabel = "Text ${c.name}") { com.aura.launcher.ActivityBridge.start(context, com.aura.launcher.data.ContactSearch.messageIntent(n)) },
+                contentAlignment = Alignment.Center,
+            ) { AuraGlyph(Glyph.Message, size = 20.dp, color = Aura.Ink) }
         }
     }
 }

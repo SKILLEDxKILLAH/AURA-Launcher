@@ -37,11 +37,16 @@ On a system wallpaper, home-screen text switches between light and dark to suit 
 - **Hold any app** for its shortcuts ("New message", "Navigate home"…), favorites, **Hide from app drawer**, App info and Uninstall. Hidden apps still show up in search.
 - Suggested and Recent apps at the top, plus a one-time tips card.
 - Optionally open the keyboard as soon as the drawer opens.
+- **Search does more:** type a sum ("15% of 80") for the answer, and contacts show up with call and text buttons (once Contacts access is allowed).
+
+### Dock and first run
+- **Choose your dock:** hold any app → **Add to dock** (up to 5). **Settings → Home → Reset dock** goes back to the defaults.
+- **Welcome tour** on first launch: how to get around, setting AURA as your home app, picking a look, and setting up Gemini.
 
 ### Gemini, built into the launcher
 Gemini runs **inside AURA**. It never opens the Gemini app. Tap the Gemini card, the bar or the sparkle button, or ask from drawer search.
 
-- **First use:** tap **Continue with Google**, pick your account and allow access. That's the only setup on the phone. After that, access tokens refresh silently in the background.
+- **First use, no Google Cloud needed:** choose **On this phone** (Gemini Nano: one tap, no account, fully private, where your phone supports it), a **free Gemini key** (open AI Studio → Create key → Copy → **Paste my key**), or **Continue with Google**. See [docs/GEMINI_SETUP.md](docs/GEMINI_SETUP.md).
 - **Replies appear as they're written**, and so does Gemini's thinking.
 - **Every reply has a Report link**, for anything offensive or wrong.
 - **Voice:** the mic listens inline with live transcription. It uses on-device speech recognition when available and opens no dialog or other app.

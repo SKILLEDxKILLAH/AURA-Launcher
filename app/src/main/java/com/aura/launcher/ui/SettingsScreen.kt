@@ -57,6 +57,8 @@ fun SettingsScreen(
     apps: List<com.aura.launcher.data.AppEntry> = emptyList(),
     onAddWidget: () -> Unit = {},
     onEnableGestures: () -> Unit = {},
+    onChangeGemini: () -> Unit = {},
+    onResetDock: () -> Unit = {},
     onClose: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -91,6 +93,14 @@ fun SettingsScreen(
                 prefs.topLineMode == TopLineMode.WEATHER,
             ) { prefs.updateTopLineMode(TopLineMode.WEATHER) }
             ActionRow("Add a widget", "Or press and hold an empty spot on the home screen → Widgets", onAddWidget)
+            if (prefs.dockKeys.isEmpty()) {
+                Text(
+                    "Dock: shows your default Phone, Messages, Browser, Photos and Camera. Hold any app → “Add to dock” to choose your own (up to 5).",
+                    color = Aura.InkFaint, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                )
+            } else {
+                ActionRow("Reset dock", "Go back to your default Phone, Messages, Browser, Photos and Camera", onResetDock)
+            }
             ToggleRow("AURA backdrop", "Off uses your system wallpaper", prefs.useAuraBackdrop, prefs::updateUseAuraBackdrop)
             ToggleRow("Weather under the clock", "Local conditions via Open‑Meteo", prefs.showWeather, prefs::updateShowWeather)
             ToggleRow("Fahrenheit", null, prefs.fahrenheit, prefs::updateFahrenheit)
@@ -217,6 +227,16 @@ fun SettingsScreen(
         }
 
         Group("Gemini") {
+            ActionRow(
+                "How Gemini runs",
+                when {
+                    prefs.authMode == GeminiAuthMode.ON_DEVICE -> "On this phone (Gemini Nano)"
+                    prefs.authMode == GeminiAuthMode.API_KEY && prefs.apiKey.isNotBlank() -> "Your free Gemini key"
+                    prefs.authMode == GeminiAuthMode.GOOGLE_ACCOUNT && prefs.accountEmail != null -> "Google account"
+                    else -> "Not set up yet"
+                } + " · tap to change",
+                onChangeGemini,
+            )
             val email = prefs.accountEmail
             if (prefs.authMode == GeminiAuthMode.GOOGLE_ACCOUNT && email != null) {
                 AccountRow(prefs.accountName ?: "Google account", email, onSignOut)
@@ -369,7 +389,7 @@ private fun CopyRow(label: String, value: String) {
 
 /** A row of pill buttons; exactly one is selected. */
 @Composable
-private fun <T> Segmented(options: List<T>, selected: T, label: (T) -> String, onSelect: (T) -> Unit) {
+internal fun <T> Segmented(options: List<T>, selected: T, label: (T) -> String, onSelect: (T) -> Unit) {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp).glass(RoundedCornerShape(22.dp)).padding(4.dp),
         horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp),

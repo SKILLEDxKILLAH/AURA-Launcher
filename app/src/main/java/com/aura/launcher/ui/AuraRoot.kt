@@ -193,6 +193,7 @@ fun AuraRoot(
         BackHandler(enabled = vm.diagnosticsOpen) { vm.diagnosticsOpen = false }
         BackHandler(enabled = vm.widgetPickerOpen) { vm.widgetPickerOpen = false }
         BackHandler(enabled = vm.gestureDisclosureOpen) { vm.declineGestureDisclosure() }
+        BackHandler(enabled = !prefs.welcomeDone) { prefs.markWelcomeDone() }
 
         val dragState = rememberDraggableState { routeDrag(it) }
 
@@ -236,8 +237,12 @@ fun AuraRoot(
             uninstall = vm.repo::uninstall,
             isFavorite = { it.key in prefs.favorites },
             isHidden = { it.key in prefs.hiddenApps },
+            toggleDock = vm::toggleDock,
+            isInDock = vm::isInDock,
         )
-        val dockEntry = { item: com.aura.launcher.data.DockItem -> apps.firstOrNull { it.packageName == item.packageName && !it.isWork } }
+        val dockEntry = { item: com.aura.launcher.data.DockItem ->
+            item.entryKey?.let { key -> apps.firstOrNull { it.key == key } } ?: apps.firstOrNull { it.packageName == item.packageName && !it.isWork }
+        }
 
         // ---- Home --------------------------------------------------------------------------
         val openGoogle = {
@@ -395,16 +400,26 @@ fun AuraRoot(
                 state = GeminiSheetState(
                     chat = vm.chat,
                     busy = vm.agentBusy,
-                    needsSignIn = !prefs.geminiReady,
+                    needsSignIn = !prefs.geminiReady || vm.geminiSetupOpen,
                     signingIn = vm.signingIn,
                     signInError = vm.signInError,
-                    accountLabel = if (prefs.authMode == com.aura.launcher.data.GeminiAuthMode.API_KEY) "API key" else prefs.accountEmail,
+                    accountLabel = when (prefs.authMode) {
+                        com.aura.launcher.data.GeminiAuthMode.API_KEY -> "Your Gemini key"
+                        com.aura.launcher.data.GeminiAuthMode.ON_DEVICE -> "On this phone"
+                        else -> prefs.accountEmail
+                    },
                     model = prefs.model,
                     listenRequest = vm.listenRequest,
                     models = vm.models,
                     modelsLoading = vm.modelsLoading,
                     modelsError = vm.modelsError,
                     thinking = prefs.thinking,
+                    setup = GeminiSetupState(
+                        nanoStatus = vm.nanoStatus, nanoWorking = vm.nanoWorking, nanoError = vm.nanoError,
+                        keyChecking = vm.keyChecking, keyError = vm.keyError,
+                        signingIn = vm.signingIn, signInError = vm.signInError,
+                    ),
+                    onDeviceName = vm.nanoName.takeIf { prefs.authMode == com.aura.launcher.data.GeminiAuthMode.ON_DEVICE },
                 ),
                 onSend = { vm.ask(it) },
                 onSignIn = { vm.signIn() },
@@ -416,6 +431,11 @@ fun AuraRoot(
                 onRunCheck = vm::runDiagnostics,
                 onSelectThinking = vm::selectThinking,
                 onReport = vm::reportReply,
+                setupActions = GeminiSetupActions(
+                    useNano = vm::useOnDevice, openKeyPage = vm::openKeyPage, pasteKey = vm::pasteApiKey,
+                    signIn = vm::signIn, openSettings = { vm.geminiSheetOpen = false; vm.settingsOpen = true },
+                ),
+                onChangeSetup = { vm.geminiSetupOpen = true; vm.checkNano() },
             )
         }
 
@@ -447,6 +467,20 @@ fun AuraRoot(
             DiagnosticsSheet(vm.diagnostics, vm.diagnosticsRunning, onRunAgain = vm::runDiagnostics) { vm.diagnosticsOpen = false }
         }
 
+        // First launch. People who already set AURA up (home app + Gemini) don't need it.
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            if (!prefs.welcomeDone && vm.isDefaultHome && prefs.geminiReady) prefs.markWelcomeDone()
+        }
+        AnimatedVisibility(!prefs.welcomeDone, enter = fadeIn(), exit = fadeOut()) {
+            WelcomeScreen(
+                prefs = prefs,
+                isDefaultHome = vm.isDefaultHome,
+                onSetHome = vm::requestDefaultHome,
+                onSetUpGemini = { vm.openGemini(); vm.geminiSetupOpen = !prefs.geminiReady; vm.checkNano() },
+                onFinish = prefs::markWelcomeDone,
+            )
+        }
+
         AnimatedVisibility(vm.settingsOpen, enter = fadeIn(), exit = fadeOut()) {
             SettingsScreen(
                 prefs = prefs,
@@ -459,6 +493,8 @@ fun AuraRoot(
                 apps = apps,
                 onAddWidget = { vm.settingsOpen = false; vm.widgetPickerOpen = true },
                 onEnableGestures = { vm.settingsOpen = false; vm.enableGestureService() },
+                onResetDock = vm::resetDock,
+                onChangeGemini = { vm.settingsOpen = false; vm.openGemini(); vm.geminiSetupOpen = true; vm.checkNano() },
             ) { vm.settingsOpen = false }
         }
     }

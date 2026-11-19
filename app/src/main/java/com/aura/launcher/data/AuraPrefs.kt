@@ -22,8 +22,15 @@ enum class DrawerLayout(val label: String) { LIST("List"), COMPACT("Compact"), G
 /** What sits at the top-left of the home screen. */
 enum class TopLineMode { LABEL, WEATHER }
 
-/** How AURA authenticates to Gemini. Both run Gemini inside the launcher. */
-enum class GeminiAuthMode { GOOGLE_ACCOUNT, API_KEY }
+/** How AURA reaches Gemini. All of them run inside the launcher. */
+enum class GeminiAuthMode {
+    /** Google sign-in through the developer's Google Cloud OAuth client. */
+    GOOGLE_ACCOUNT,
+    /** The person's own free key from Google AI Studio. */
+    API_KEY,
+    /** Gemini Nano on the phone itself: no account, no key, nothing leaves the device. */
+    ON_DEVICE,
+}
 
 /** Small observable preference store. Every property is Compose state, so UI recomposes on change. */
 class AuraPrefs(context: Context) {
@@ -93,6 +100,16 @@ class AuraPrefs(context: Context) {
     var drawerTipSeen by mutableStateOf(sp.getBoolean(K_DRAWER_TIP, false))
         private set
 
+    /** Apps you chose for the dock, in order; empty means AURA picks your default apps. */
+    var dockKeys by mutableStateOf(sp.getString(K_DOCK, null)?.split('\n')?.filter { it.isNotBlank() } ?: emptyList())
+        private set
+    fun updateDockKeys(v: List<String>) { dockKeys = v.distinct().take(MAX_DOCK); sp.edit { putString(K_DOCK, dockKeys.joinToString("\n")) } }
+
+    /** First-run welcome has been shown (or skipped). */
+    var welcomeDone by mutableStateOf(sp.getBoolean(K_WELCOME, false))
+        private set
+    fun markWelcomeDone() { welcomeDone = true; sp.edit { putBoolean(K_WELCOME, true) } }
+
     fun updateDrawerLayout(v: DrawerLayout) { drawerLayout = v; sp.edit { putString(K_DRAWER_LAYOUT, v.name) } }
     fun toggleHidden(key: String) {
         hiddenApps = if (key in hiddenApps) hiddenApps - key else hiddenApps + key
@@ -160,6 +177,7 @@ class AuraPrefs(context: Context) {
         get() = when (authMode) {
             GeminiAuthMode.GOOGLE_ACCOUNT -> accountEmail != null
             GeminiAuthMode.API_KEY -> apiKey.isNotBlank()
+            GeminiAuthMode.ON_DEVICE -> true
         }
 
     companion object {
@@ -180,6 +198,9 @@ class AuraPrefs(context: Context) {
         private const val K_TOP_LABEL = "top_label"
         private const val K_THEME_MODE = "theme_mode"
         private const val K_DRAWER_LAYOUT = "drawer_layout"
+        private const val K_DOCK = "dock_keys"
+        private const val K_WELCOME = "welcome_done"
+        const val MAX_DOCK = 5
         private const val K_HIDDEN = "hidden_apps"
         private const val K_DRAWER_KEYBOARD = "drawer_keyboard"
         private const val K_DRAWER_TIP = "drawer_tip_seen"

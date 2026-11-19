@@ -49,7 +49,7 @@ object SettingShortcuts {
 }
 
 /** Default apps for the dock, resolved from the device's actual role holders. */
-data class DockItem(val label: String, val packageName: String, val intent: Intent)
+data class DockItem(val label: String, val packageName: String, val intent: Intent, val entryKey: String? = null)
 
 object DockResolver {
     const val GOOGLE_PACKAGE = "com.google.android.googlequicksearchbox"

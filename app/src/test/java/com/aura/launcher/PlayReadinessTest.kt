@@ -214,7 +214,7 @@ class PlayReadinessTest {
 
     @Test
     fun gesturesAskFirstAndOnlyOpenSettingsAfterAgreeing() {
-        val vm = MainViewModel(context)
+        val vm = MainViewModel(context).also { it.prefs.markWelcomeDone() }
         compose.setContent { AuraTheme { com.aura.launcher.ui.AuraRoot(vm) {} } }
         vm.enableGestureService()
         compose.waitForIdle()
