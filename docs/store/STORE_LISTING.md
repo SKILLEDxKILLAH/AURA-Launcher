@@ -54,22 +54,21 @@ AURA is an independent app and is not affiliated with or endorsed by Google. Gem
 ## Graphics
 | Field | File | Size |
 |---|---|---|
-| App icon | `icon_512_alt.png` (recommended), or `icon_512.png` | 512×512 PNG |
-| Feature graphic | `feature_graphic_alt.png` (matches the recommended icon), or `feature_graphic.png` | 1024×500 PNG |
+| App icon | `icon_512.png` | 512×512 PNG |
+| Feature graphic | `feature_graphic.png` | 1024×500 PNG |
 | Phone screenshots | `phone/1_home.png` … `phone/8_news.png` (upload all 8, in order) | 1080×1920 (9:16) |
 
 Foldable, tablet, desktop and Android XR screenshots and the video are optional. Leave them empty.
 
-**Why the "alt" icon is recommended:** AURA's current icon is a four-point sparkle in Gemini's blue-to-pink gradient, which looks very much like Google's Gemini logo. Play's impersonation and metadata policies reject icons that suggest a connection to another brand. The alt icon (an aura ring over sand dunes) is original.
+The icon is AURA's own mark: a glowing aura ring over sand dunes, the same as the app's launcher icon from 1.2.2 on. It was changed from a four-point sparkle, which looked too much like Google's Gemini logo for Play's impersonation policy.
 
 ## How these were made
 - Screens are rendered from the real app by `StoreAssetsTest`, with generic placeholder apps and icons and no other brands.
 - `tools/store_frames.py` adds the captions.
-- `tools/store_icon.py` draws the alt icon.
+- The icon and feature graphic are rendered from the app's own launcher icon.
 
 To regenerate:
 ```bash
-python3 tools/store_icon.py
 ./gradlew :app:testDebugUnitTest --tests '*StoreAssetsTest'
 python3 tools/store_frames.py   # output: app/build/store/
 ```

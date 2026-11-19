@@ -18,8 +18,8 @@ android {
         targetSdk = 37
         // versionName is what people see. versionCode only ever goes up so each build installs
         // over the last (pre-release builds already used 1–14).
-        versionCode = 19
-        versionName = "1.2.1"
+        versionCode = 20
+        versionName = "1.2.2"
 
         // Where "Report this reply" sends reports (an HTTPS endpoint that accepts a JSON POST).
         // Set auraReportUrl in gradle.properties or with -PauraReportUrl=… for store builds.

@@ -67,7 +67,7 @@ fun SettingsScreen(
             .verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            AuraGlyph(Glyph.Sparkle, size = 30.dp)
+            AuraGlyph(Glyph.Ring, size = 30.dp)
             Spacer(Modifier.width(12.dp))
             Text("AURA", color = Aura.Ink, fontSize = 30.sp, fontFamily = Aura.Sans, modifier = Modifier.weight(1f))
             Text("Done", color = Aura.Accent, fontSize = 16.sp, modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onClose).padding(10.dp))

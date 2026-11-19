@@ -23,7 +23,7 @@ import androidx.compose.ui.unit.dp
 import com.aura.launcher.data.Sky
 import com.aura.launcher.ui.theme.Aura
 
-enum class Glyph { Sparkle, Mic, Phone, Message, Gear, Grid, Search, Pulse, Close, Send, External, Star }
+enum class Glyph { Sparkle, Ring, Mic, Phone, Message, Gear, Grid, Search, Pulse, Close, Send, External, Star }
 
 private val phonePath by lazy {
     PathParser().parsePathString(
@@ -51,6 +51,17 @@ fun DrawScope.drawGlyph(glyph: Glyph, color: Color) {
     when (glyph) {
         Glyph.Sparkle -> drawSparkle(Brush.linearGradient(listOf(Color.White, Aura.GeminiViolet, Aura.GeminiBlue), Offset.Zero, Offset(s, s)))
         Glyph.Star -> drawSparkle(Brush.linearGradient(listOf(color, color)))
+        // AURA's own mark (same as the app icon): a ring of light with a bright point on it.
+        Glyph.Ring -> {
+            val r = s * 0.36f
+            val c = Offset(s / 2, s / 2)
+            drawCircle(
+                Brush.linearGradient(listOf(Color(0xFFF8F0E4), Color(0xFFC4ACFF)), Offset(c.x - r, c.y), Offset(c.x + r, c.y)),
+                r, c, style = Stroke(s * 0.1f),
+            )
+            val p = Offset(c.x + r * 0.7071f, c.y - r * 0.7071f)
+            drawCircle(Color(0xFFFFFCF5), s * 0.075f, p)
+        }
         Glyph.Mic -> {
             val w = s * 0.32f
             drawRoundRect(color, Offset((s - w) / 2, s * 0.1f), Size(w, s * 0.48f), CornerRadius(w / 2))

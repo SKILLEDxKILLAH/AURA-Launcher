@@ -297,6 +297,16 @@ class StoreAssetsTest {
         return bmp
     }
 
+    /** How the icon looks as a themed (monochrome) icon on Android, for a visual check. */
+    @Test
+    fun themedIconPreview() {
+        val d = context.getDrawable(R.mipmap.ic_launcher) as AdaptiveIconDrawable
+        val themed = AppRepository.themedIcon(d, com.aura.launcher.data.IconTheme(0xFF3A3531.toInt(), 0xFFEADBC8.toInt()))!!
+        val bmp = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888)
+        themed.setBounds(0, 0, 256, 256); themed.draw(Canvas(bmp))
+        File(out, "icon_themed_preview.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
     @Test
     fun icon512() {
         File(out, "icon_512.png").outputStream().use { appIcon(512).compress(Bitmap.CompressFormat.PNG, 100, it) }
@@ -305,14 +315,6 @@ class StoreAssetsTest {
     @Test
     @Config(qualifiers = "w512dp-h250dp-xhdpi")
     fun featureGraphic() = feature(appIcon(256), "feature_graphic.png")
-
-    /** Same, with the original ring icon from tools/store_icon.py (run that first). */
-    @Test
-    @Config(qualifiers = "w512dp-h250dp-xhdpi")
-    fun featureGraphicAlt() {
-        val alt = File(out, "icon_512_alt.png").takeIf { it.exists() } ?: return
-        feature(android.graphics.BitmapFactory.decodeFile(alt.path), "feature_graphic_alt.png")
-    }
 
     private fun feature(iconBitmap: Bitmap, file: String) {
         val icon = iconBitmap.asImageBitmap()

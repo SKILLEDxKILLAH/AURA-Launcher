@@ -1,18 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AURA icon: a glowing aura ring, warm white fading to lavender, with a point of light. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path android:pathData="M54,30 Q56.5,51.5 78,54 Q56.5,56.5 54,78 Q51.5,56.5 30,54 Q51.5,51.5 54,30 Z">
+    <!-- Soft glow around the ring: a radial fade that peaks at the ring's radius (16.9 of 27). -->
+    <path android:pathData="M27,49.7 a27,27 0 1,0 54,0 a27,27 0 1,0 -54,0">
         <aapt:attr name="android:fillColor">
             <gradient
+                android:type="radial"
+                android:centerX="54" android:centerY="49.7"
+                android:gradientRadius="27">
+                <item android:offset="0" android:color="#00C4ACFF" />
+                <item android:offset="0.45" android:color="#00C4ACFF" />
+                <item android:offset="0.626" android:color="#59D8C8FF" />
+                <item android:offset="0.8" android:color="#1AC4ACFF" />
+                <item android:offset="1" android:color="#00C4ACFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <!-- The ring -->
+    <path
+        android:pathData="M37.1,49.7 a16.9,16.9 0 1,0 33.8,0 a16.9,16.9 0 1,0 -33.8,0"
+        android:strokeWidth="3.6">
+        <aapt:attr name="android:strokeColor">
+            <gradient
                 android:type="linear"
-                android:startX="32" android:startY="32"
-                android:endX="76" android:endY="76">
-                <item android:offset="0" android:color="#FF8AB0FF" />
-                <item android:offset="0.5" android:color="#FFC2A8FF" />
-                <item android:offset="1" android:color="#FFF3BBD9" />
+                android:startX="37" android:startY="49.7"
+                android:endX="71" android:endY="49.7">
+                <item android:offset="0" android:color="#FFF8F0E4" />
+                <item android:offset="1" android:color="#FFC4ACFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <!-- Light catching the ring -->
+    <path android:pathData="M61.95,37.75 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="65.95" android:centerY="37.75"
+                android:gradientRadius="4">
+                <item android:offset="0" android:color="#FFFFFCF5" />
+                <item android:offset="0.45" android:color="#CCFFFCF5" />
+                <item android:offset="1" android:color="#00FFFCF5" />
             </gradient>
         </aapt:attr>
     </path>
