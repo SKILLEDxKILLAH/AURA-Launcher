@@ -61,7 +61,7 @@ This one does need Google Cloud, but only **once, by whoever publishes AURA**. P
 ### 3. Register AURA as an Android app
 1. Go to **Google Auth Platform → Clients → + Create client**.
 2. **Application type:** **Android**.
-3. **Package name:** `com.aura.launcher`
+3. **Package name:** `com.auralab.launcher`
 4. **SHA-1 certificate fingerprint:** the fingerprint of the key that signed the AURA you installed:
    - For the APK from the **v1.0.0 GitHub release**, use
      `21:5E:10:55:71:4E:D8:77:73:F0:3C:85:73:0C:10:1A:FE:B4:96:D6`
@@ -129,7 +129,7 @@ Messages and calendar events always open as **drafts for you to confirm**. Gemin
 The account you chose isn't a test user. Add that exact Gmail under **Google Auth Platform → Audience → Test users**, wait a minute, and try again. Also check that you're editing the same project that holds the Android client.
 
 **"Google sign-in isn't set up for this build yet"**
-Google doesn't recognize this copy of AURA. The Android client's **package name** (`com.aura.launcher`) or **SHA-1** doesn't match. Copy the SHA-1 from AURA's **Settings → Google setup** and add it as an Android client.
+Google doesn't recognize this copy of AURA. The Android client's **package name** (`com.auralab.launcher`) or **SHA-1** doesn't match. Copy the SHA-1 from AURA's **Settings → Google setup** and add it as an Android client.
 
 **"The Gemini API isn't enabled in your Google Cloud project yet"**
 Enable **Generative Language API** in that project (Option 3, step 1.3). With a free key from AI Studio this is already done for you.

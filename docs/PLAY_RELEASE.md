@@ -28,7 +28,7 @@ Checked: 86 automated tests pass, including new tests for each change above. And
 ### 2. Signing and Google sign-in: important
 Play re-signs your app with **its own app signing key**, so the copy people install from Play has a **different SHA-1** than your sideloaded APK.
 1. In Play Console, open **Test and release → App integrity → App signing**, and copy the **App signing key certificate SHA-1**.
-2. In Google Cloud, open **Google Auth Platform → Clients → + Create client → Android**. Use `com.aura.launcher` and that SHA-1.
+2. In Google Cloud, open **Google Auth Platform → Clients → + Create client → Android**. Use `com.auralab.launcher` and that SHA-1.
 
 Keep your existing client too, so your sideloaded build keeps working.
 

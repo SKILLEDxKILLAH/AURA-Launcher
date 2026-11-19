@@ -8,14 +8,16 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.aura.launcher"
+        // The app's ID on Google Play and on the phone ("com.aura.launcher" was already taken on Play).
+        // The code itself stays in the com.aura.launcher package (namespace above).
+        applicationId = "com.auralab.launcher"
         // AURA targets Android 17 (API 37) exclusively.
         minSdk = 37
         targetSdk = 37
         // versionName is what people see. versionCode only ever goes up so each build installs
         // over the last (pre-release builds already used 1–14).
-        versionCode = 18
-        versionName = "1.2.0"
+        versionCode = 19
+        versionName = "1.2.1"
 
         // Where "Report this reply" sends reports (an HTTPS endpoint that accepts a JSON POST).
         // Set auraReportUrl in gradle.properties or with -PauraReportUrl=… for store builds.
