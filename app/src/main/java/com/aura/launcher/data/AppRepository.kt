@@ -122,6 +122,10 @@ class AppRepository(private val context: Context) {
 
     fun cachedIcon(key: String): ImageBitmap? = iconCache.get(key)
 
+    /** For screenshots and tests: show [bitmap] as the icon for an app key or "pkg:<package>". */
+    @androidx.annotation.VisibleForTesting
+    fun putIcon(key: String, bitmap: ImageBitmap) { iconCache.put(key, bitmap) }
+
     suspend fun icon(entry: AppEntry): ImageBitmap? = withContext(Dispatchers.IO) {
         iconCache.get(entry.key) ?: run {
             val info = infos[entry.key] ?: return@run null
