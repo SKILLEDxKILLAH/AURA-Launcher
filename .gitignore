@@ -9,3 +9,5 @@ captures/
 
 # Signing key (keep a private backup; Google OAuth is registered against its SHA-1)
 keystore/*.keystore
+keystore/*.jks
+keystore/*.properties

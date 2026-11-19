@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
@@ -25,10 +27,14 @@ android {
         buildConfigField("String", "REPORT_URL", "\"${project.findProperty("auraReportUrl") ?: ""}\"")
     }
 
-    // One stable signing key for debug and release builds. Google sign-in (OAuth) is registered
-    // against this key's SHA-1, and it lets new builds install over earlier ones.
-    // The keystore is not committed; without it, builds fall back to the local debug key.
+    // Signing. Neither key is committed (see .gitignore); back both up.
+    // - Release builds (what goes to Google Play) use AURA's release/upload key, configured in
+    //   keystore/release.properties. Play refuses anything signed with a debug key.
+    // - Debug builds use a shared debug key so they install over each other.
+    // Without the release key, release builds fall back to the debug key: fine for sideloading,
+    // but Google Play will reject them.
     val auraKeystore = rootProject.file("keystore/aura-signing.keystore")
+    val releaseProps = rootProject.file("keystore/release.properties")
     signingConfigs {
         if (auraKeystore.exists()) {
             create("aura") {
@@ -38,8 +44,19 @@ android {
                 keyPassword = "android"
             }
         }
+        if (releaseProps.exists()) {
+            val p = Properties().apply { releaseProps.inputStream().use { load(it) } }
+            create("release") {
+                storeFile = rootProject.file("keystore/" + p.getProperty("storeFile"))
+                storePassword = p.getProperty("storePassword")
+                keyAlias = p.getProperty("keyAlias")
+                keyPassword = p.getProperty("keyPassword")
+            }
+        }
     }
     val auraSigning = signingConfigs.findByName("aura") ?: signingConfigs.getByName("debug")
+    val releaseSigning = signingConfigs.findByName("release")
+        ?: auraSigning.also { logger.warn("AURA: keystore/release.properties not found, so release builds are signed with a DEBUG key. Google Play will reject them.") }
 
     buildTypes {
         debug {
@@ -49,7 +66,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = auraSigning
+            signingConfig = releaseSigning
         }
     }
 

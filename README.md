@@ -165,7 +165,11 @@ Publishing on Google Play? See [docs/PLAY_RELEASE.md](docs/PLAY_RELEASE.md) and 
 
 Install it with `adb install app/build/outputs/apk/debug/app-debug.apk`. Then press Home and pick **AURA**, or use **Settings → Set AURA as your home app**.
 
-> Builds are signed with `keystore/aura-signing.keystore` when present (kept out of git, so back it up). Google sign-in is registered against its SHA-1, and it lets new builds install over old ones. Without it, Gradle falls back to your local debug key, and you'd need to register that SHA-1 too.
+> **Signing.**
+> - **Release builds** (what goes to Google Play) are signed with AURA's release key: `keystore/aura-upload.jks`, with its passwords in `keystore/release.properties`.
+> - **Debug builds** use `keystore/aura-signing.keystore`.
+> - None of these are in git, so **back them up**. Losing the release key means asking Google Play support to reset it.
+> - Without `release.properties`, release builds fall back to a debug key, which Google Play rejects.
 
 ## Tech
 Kotlin with Jetpack Compose and Material 3, AGP 9.5 and Gradle 9.9. There are no third-party runtime dependencies: Gemini and Open‑Meteo are called with the platform `HttpURLConnection` and `org.json`. Google sign-in uses Play services' `AuthorizationClient`. Apps are loaded through `LauncherApps`, so live package changes and work profiles are handled the same way the system launcher handles them.

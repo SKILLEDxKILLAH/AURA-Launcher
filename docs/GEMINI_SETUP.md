@@ -63,8 +63,9 @@ This one does need Google Cloud, but only **once, by whoever publishes AURA**. P
 2. **Application type:** **Android**.
 3. **Package name:** `com.auralab.launcher`
 4. **SHA-1 certificate fingerprint:** the fingerprint of the key that signed the AURA you installed:
-   - For the APK from the **v1.0.0 GitHub release**, use
-     `21:5E:10:55:71:4E:D8:77:73:F0:3C:85:73:0C:10:1A:FE:B4:96:D6`
+   - For release APKs from **1.2.1 on** (signed with AURA's release key), use
+     `24:3B:69:B3:3B:AA:EB:E3:26:08:BC:70:C8:BB:DF:D0:E6:83:0F:69`
+   - For copies installed from **Google Play**, use the "App signing key" SHA-1 from Play Console → App integrity.
    - In general, open AURA → **Settings → Google setup (one time, for the developer)** and tap the **SHA-1** row to copy the exact value for your installed copy.
 5. Click **Create**. You don't need to download anything.
 

@@ -26,6 +26,11 @@ Checked: 86 automated tests pass, including new tests for each change above. And
 3. Create the app, and upload `app-release.aab` from the GitHub release, or build it with `./gradlew :app:bundleRelease`.
 
 ### 2. Signing and Google sign-in: important
+AURA's release builds are signed with its **upload key**: `keystore/aura-upload.jks`, with its passwords in `keystore/release.properties`.
+- Its certificate SHA-1 is `24:3B:69:B3:3B:AA:EB:E3:26:08:BC:70:C8:BB:DF:D0:E6:83:0F:69`.
+- When Play Console asks, choose **Use Google-generated key** for Play App Signing, and keep this key as your upload key.
+- **Back up both files somewhere safe**, such as a password manager. Every future update must be signed with the same upload key. If it's lost, Play support can reset it, but that takes days.
+
 Play re-signs your app with **its own app signing key**, so the copy people install from Play has a **different SHA-1** than your sideloaded APK.
 1. In Play Console, open **Test and release → App integrity → App signing**, and copy the **App signing key certificate SHA-1**.
 2. In Google Cloud, open **Google Auth Platform → Clients → + Create client → Android**. Use `com.auralab.launcher` and that SHA-1.
